@@ -7,6 +7,10 @@ let isQuitting = false;
 
 const isDev = process.env.NODE_ENV !== 'production' || !app.isPackaged;
 
+// Allow media autoplay without requiring manual click inside the iframe
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+
 function setupNetworkInterceptors() {
   const filter = {
     urls: [
@@ -22,7 +26,10 @@ function setupNetworkInterceptors() {
   session.defaultSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
     const headers = { ...details.requestHeaders };
     headers['Referer'] = 'https://www.youtube.com/';
-    headers['Origin'] = 'https://www.youtube.com';
+    // Only modify Origin if already present (e.g. CORS/POST) to avoid 400 Bad Request on iframe navigation
+    if (headers['Origin'] || details.method === 'POST') {
+      headers['Origin'] = 'https://www.youtube.com';
+    }
     headers['User-Agent'] =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
     callback({ cancel: false, requestHeaders: headers });
@@ -89,6 +96,11 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+  });
+
+  // Forward renderer console logs to main process stdout
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    console.log(`[Renderer L${level}] ${message} (${sourceId}:${line})`);
   });
 
   // Handle external links safely in default system browser

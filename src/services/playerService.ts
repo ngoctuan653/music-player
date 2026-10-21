@@ -25,7 +25,8 @@ class PlayerService {
   private isApiReady: boolean = false;
   private isPlayerReady: boolean = false;
   private progressTimer: any = null;
-  private pendingVideoId: string | null = null;
+  private pendingContainerId: string | null = null;
+  private pendingTrack: TrackReference | null = null;
   private listeners: Set<PlayerListener> = new Set();
 
   private status: PlayerStatus = {
@@ -55,9 +56,9 @@ class PlayerService {
     window.onYouTubeIframeAPIReady = () => {
       this.isApiReady = true;
       if (prevReady) prevReady();
-      if (this.pendingVideoId) {
-        const id = this.pendingVideoId;
-        this.pendingVideoId = null;
+      if (this.pendingContainerId) {
+        const id = this.pendingContainerId;
+        this.pendingContainerId = null;
         this.initPlayer(id);
       }
     };
@@ -73,7 +74,7 @@ class PlayerService {
 
   public initPlayer(containerId: string): void {
     if (!this.isApiReady) {
-      this.pendingVideoId = containerId;
+      this.pendingContainerId = containerId;
       return;
     }
 
@@ -81,27 +82,47 @@ class PlayerService {
       return;
     }
 
+    const origin = typeof window !== 'undefined' && window.location.protocol.startsWith('http')
+      ? window.location.origin
+      : undefined;
+
+    const playerVars: any = {
+      autoplay: 1,
+      controls: 1,
+      rel: 0,
+      modestbranding: 1,
+      playsinline: 1,
+      enablejsapi: 1,
+      fs: 0,
+      widget_referrer: 'https://www.youtube.com',
+    };
+    if (origin) {
+      playerVars.origin = origin;
+    }
+
     try {
       this.player = new window.YT.Player(containerId, {
         height: '100%',
         width: '100%',
         host: 'https://www.youtube.com',
-        playerVars: {
-          autoplay: 0,
-          controls: 1,
-          rel: 0,
-          modestbranding: 1,
-          playsinline: 1,
-          origin: 'https://www.youtube.com',
-          widget_referrer: 'https://www.youtube.com',
-          fs: 0,
-          enablejsapi: 1,
-        },
+        playerVars,
         events: {
           onReady: () => {
             this.isPlayerReady = true;
             this.player.setVolume(this.status.volume);
             audioOutputService.applySinkToAllMedia();
+
+            // If a track was queued before player finished initialization, play it now
+            if (this.pendingTrack) {
+              const t = this.pendingTrack;
+              this.pendingTrack = null;
+              try {
+                this.player.loadVideoById(t.videoId);
+                this.player.playVideo();
+              } catch (e) {
+                console.warn('Error loading pending track:', e);
+              }
+            }
             this.notify();
           },
           onStateChange: (event: any) => {
@@ -126,7 +147,6 @@ class PlayerService {
       isBuffering = false;
       this.status.error = null;
       this.startProgressTimer();
-      // Ensure audio output is routed to active speaker
       audioOutputService.applySinkToAllMedia();
     } else if (state === 2) { // Paused
       isPlaying = false;
@@ -134,6 +154,11 @@ class PlayerService {
       this.stopProgressTimer();
     } else if (state === 3) { // Buffering
       isBuffering = true;
+    } else if (state === 5) { // Video Cued
+      isBuffering = false;
+      try {
+        this.player.playVideo();
+      } catch {}
     } else if (state === 0) { // Ended
       isPlaying = false;
       isBuffering = false;
@@ -158,15 +183,12 @@ class PlayerService {
   private handlePlayerError(errorCode: number): void {
     this.stopProgressTimer();
 
-    // If errorCode 150 or 101 (owner restricted embedding), attempt unblocked fallback
+    // If errorCode 150 or 101, retry with unblocked parameters
     if ((errorCode === 150 || errorCode === 101) && this.status.currentTrack) {
-      console.warn('Embedding restricted video detected, applying direct stream fallback...');
+      console.warn('Embedding restricted video, applying direct stream fallback...');
       try {
-        // Reload video with direct loadVideoById with origin override
-        this.player.loadVideoById({
-          videoId: this.status.currentTrack.videoId,
-          suggestedQuality: 'small',
-        });
+        this.player.loadVideoById(this.status.currentTrack.videoId);
+        this.player.playVideo();
         this.status.error = null;
         return;
       } catch (e) {
@@ -236,15 +258,16 @@ class PlayerService {
 
     if (this.player && this.isPlayerReady) {
       try {
-        this.player.loadVideoById({
-          videoId: track.videoId,
-        });
+        this.player.loadVideoById(track.videoId);
+        this.player.playVideo();
         setTimeout(() => {
           audioOutputService.applySinkToAllMedia();
-        }, 300);
+        }, 500);
       } catch (e) {
         console.error('Error loading video by ID', e);
       }
+    } else {
+      this.pendingTrack = track;
     }
   }
 
