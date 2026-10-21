@@ -182,19 +182,7 @@ class PlayerService {
 
   private handlePlayerError(errorCode: number): void {
     this.stopProgressTimer();
-
-    // If errorCode 150 or 101, retry with unblocked parameters
-    if ((errorCode === 150 || errorCode === 101) && this.status.currentTrack) {
-      console.warn('Embedding restricted video, applying direct stream fallback...');
-      try {
-        this.player.loadVideoById(this.status.currentTrack.videoId);
-        this.player.playVideo();
-        this.status.error = null;
-        return;
-      } catch (e) {
-        console.warn('Direct stream fallback attempt finished', e);
-      }
-    }
+    console.error('[YouTube Player Error]', errorCode);
 
     let message = 'Không thể phát video này.';
     if (errorCode === 2) {
@@ -204,7 +192,7 @@ class PlayerService {
     } else if (errorCode === 100) {
       message = 'Video không tồn tại hoặc đã bị xóa.';
     } else if (errorCode === 101 || errorCode === 150) {
-      message = 'Chủ sở hữu giới hạn bản quyền phát trên web ngoài. Ứng dụng đang tối ưu kết nối trực tiếp.';
+      message = 'Chủ sở hữu video không cho phép phát nhúng bên ngoài YouTube.';
     }
 
     this.status = {

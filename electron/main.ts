@@ -1,9 +1,12 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, shell, nativeImage, session, net } from 'electron';
 import path from 'path';
+import http from 'http';
+import fs from 'fs';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+let staticServer: http.Server | null = null;
 
 const isDev = process.env.NODE_ENV !== 'production' || !app.isPackaged;
 
@@ -11,40 +14,81 @@ const isDev = process.env.NODE_ENV !== 'production' || !app.isPackaged;
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 
+function createStaticServer(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const distPath = path.join(__dirname, '../dist');
+    const mimeTypes: Record<string, string> = {
+      '.html': 'text/html',
+      '.js': 'text/javascript',
+      '.css': 'text/css',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.svg': 'image/svg+xml',
+      '.json': 'application/json',
+      '.woff2': 'font/woff2',
+    };
+
+    staticServer = http.createServer((req, res) => {
+      let cleanUrl = (req.url || '/').split('?')[0];
+      if (cleanUrl === '/') cleanUrl = '/index.html';
+      const filePath = path.join(distPath, cleanUrl);
+
+      fs.readFile(filePath, (err, data) => {
+        if (err) {
+          // Fallback to index.html for SPA routing
+          fs.readFile(path.join(distPath, 'index.html'), (e2, indexData) => {
+            if (e2) {
+              res.writeHead(404);
+              res.end('Not Found');
+            } else {
+              res.writeHead(200, { 'Content-Type': 'text/html' });
+              res.end(indexData);
+            }
+          });
+          return;
+        }
+
+        const ext = path.extname(filePath);
+        const contentType = mimeTypes[ext] || 'application/octet-stream';
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(data);
+      });
+    });
+
+    staticServer.listen(0, '127.0.0.1', () => {
+      const port = (staticServer?.address() as any)?.port;
+      resolve(`http://127.0.0.1:${port}`);
+    });
+
+    staticServer.on('error', reject);
+  });
+}
+
 function setupNetworkInterceptors() {
-  const filter = {
+  // Only target YouTube embed and player APIs.
+  // DO NOT intercept googlevideo.com so video stream security tokens are preserved!
+  const embedFilter = {
     urls: [
-      '*://*.youtube.com/*',
-      '*://*.googlevideo.com/*',
-      '*://*.ytimg.com/*',
-      '*://*.google.com/*',
-      '*://*.googleapis.com/*',
+      '*://www.youtube.com/embed/*',
+      '*://www.youtube-nocookie.com/embed/*',
+      '*://www.youtube.com/iframe_api*',
+      '*://www.youtube.com/s/player/*',
     ],
   };
 
-  // Rewrite headers so YouTube player does not reject requests with Error 150/101
-  session.defaultSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
+  session.defaultSession.webRequest.onBeforeSendHeaders(embedFilter, (details, callback) => {
     const headers = { ...details.requestHeaders };
     headers['Referer'] = 'https://www.youtube.com/';
-    // Only modify Origin if already present (e.g. CORS/POST) to avoid 400 Bad Request on iframe navigation
-    if (headers['Origin'] || details.method === 'POST') {
-      headers['Origin'] = 'https://www.youtube.com';
-    }
     headers['User-Agent'] =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
     callback({ cancel: false, requestHeaders: headers });
   });
 
-  // Strip restrictive framing headers and allow CORS from YouTube / Google APIs
-  session.defaultSession.webRequest.onHeadersReceived(filter, (details, callback) => {
+  session.defaultSession.webRequest.onHeadersReceived(embedFilter, (details, callback) => {
     const responseHeaders = { ...details.responseHeaders };
     delete responseHeaders['x-frame-options'];
     delete responseHeaders['X-Frame-Options'];
-    responseHeaders['access-control-allow-origin'] = ['*'];
-    responseHeaders['access-control-allow-methods'] = ['GET, POST, OPTIONS, HEAD'];
-    responseHeaders['access-control-allow-headers'] = ['*'];
 
-    // Remove or soften frame-ancestors in Content-Security-Policy
     if (responseHeaders['content-security-policy']) {
       responseHeaders['content-security-policy'] = responseHeaders['content-security-policy'].map(csp =>
         csp.replace(/frame-ancestors[^;]+;?/gi, '')
@@ -70,28 +114,33 @@ function setupNetworkInterceptors() {
   });
 }
 
-function createWindow() {
+async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1080,
     height: 720,
     minWidth: 840,
     minHeight: 540,
-    frame: false, // Custom frameless title bar
+    frame: false,
     backgroundColor: '#09090b',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false, // Allow smooth streaming and direct requests without CORS blocks
+      webSecurity: true, // Clean secure standard
     },
     icon: path.join(__dirname, '../public/icon.png'),
     show: false,
   });
 
   if (isDev && process.env['VITE_DEV_SERVER_URL']) {
-    mainWindow.loadURL(process.env['VITE_DEV_SERVER_URL']);
+    await mainWindow.loadURL(process.env['VITE_DEV_SERVER_URL']);
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    try {
+      const serverUrl = await createStaticServer();
+      await mainWindow.loadURL(serverUrl);
+    } catch {
+      await mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    }
   }
 
   mainWindow.once('ready-to-show', () => {
@@ -217,9 +266,9 @@ if (!gotTheLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     setupNetworkInterceptors();
-    createWindow();
+    await createWindow();
     createTray();
     registerMediaShortcuts();
 
@@ -240,7 +289,7 @@ if (!gotTheLock) {
       mainWindow?.close();
     });
 
-    // Native fetch IPC handler (completely bypasses web-level CORS and CSP)
+    // Native fetch IPC handler (bypasses CORS/CSP safely from node main process)
     ipcMain.handle('net-fetch', async (_event, url: string) => {
       try {
         const res = await net.fetch(url, {
@@ -290,15 +339,18 @@ if (!gotTheLock) {
       }
     });
 
-    app.on('activate', () => {
+    app.on('activate', async () => {
       if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
+        await createWindow();
       }
     });
   });
 
   app.on('before-quit', () => {
     isQuitting = true;
+    if (staticServer) {
+      staticServer.close();
+    }
   });
 
   app.on('will-quit', () => {
