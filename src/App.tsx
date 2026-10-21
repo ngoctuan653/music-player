@@ -8,6 +8,7 @@ import { Sidebar } from './components/Sidebar/Sidebar';
 import { PlayerBar } from './components/PlayerBar/PlayerBar';
 import { EmbeddedPlayer } from './components/EmbeddedPlayer/EmbeddedPlayer';
 import { AddToPlaylistModal } from './components/PlaylistModal/AddToPlaylistModal';
+import { CommentsDrawer } from './components/CommentsDrawer/CommentsDrawer';
 import { HomePage } from './pages/HomePage';
 import { SearchPage } from './pages/SearchPage';
 import { QueuePage } from './pages/QueuePage';
@@ -19,15 +20,23 @@ export const App: React.FC = () => {
   const [activePage, setActivePage] = useState<ActivePage>('home');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [isMiniVideoOpen, setIsMiniVideoOpen] = useState(false);
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [modalTrack, setModalTrack] = useState<TrackReference | null>(null);
+  const [currentTrack, setCurrentTrack] = useState<TrackReference | null>(null);
   const [searchInitialQuery, setSearchInitialQuery] = useState('');
 
   useEffect(() => {
     LocalStorageManager.init();
 
+    // Subscribe to current track
+    const unsubPlayer = playerService.subscribe((s) => {
+      setCurrentTrack(s.currentTrack);
+    });
+
     // Listen to media keys and system tray controls from Electron main process
+    let cleanupIpc: (() => void) | undefined;
     if (window.electronAPI?.onMediaControl) {
-      const cleanup = window.electronAPI.onMediaControl((action: string) => {
+      cleanupIpc = window.electronAPI.onMediaControl((action: string) => {
         if (action === 'togglePlayPause') {
           playerService.togglePlayPause();
         } else if (action === 'nextTrack') {
@@ -36,8 +45,12 @@ export const App: React.FC = () => {
           playlistService.playPrevious();
         }
       });
-      return cleanup;
     }
+
+    return () => {
+      unsubPlayer();
+      if (cleanupIpc) cleanupIpc();
+    };
   }, []);
 
   const handlePlayTrack = (track: TrackReference, sourceList?: TrackReference[]) => {
@@ -98,7 +111,6 @@ export const App: React.FC = () => {
               onPlayTrack={handlePlayTrack}
               onOpenAddToPlaylist={handleOpenAddToPlaylist}
               initialQuery={searchInitialQuery}
-              onNavigateToSettings={() => setActivePage('settings')}
             />
           )}
 
@@ -128,6 +140,13 @@ export const App: React.FC = () => {
         onClose={() => setIsMiniVideoOpen(false)}
       />
 
+      {/* Comments Drawer Panel */}
+      <CommentsDrawer
+        track={currentTrack}
+        isOpen={isCommentsOpen}
+        onClose={() => setIsCommentsOpen(false)}
+      />
+
       {/* Add To Playlist Dialog Modal */}
       {modalTrack && (
         <AddToPlaylistModal
@@ -136,13 +155,14 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Bottom Sticky Player Bar */}
+      {/* Bottom Sticky Player Bar (Signal Dock) */}
       <PlayerBar
         isMiniVideoOpen={isMiniVideoOpen}
         onToggleMiniVideo={() => setIsMiniVideoOpen(!isMiniVideoOpen)}
         onOpenQueue={() => setActivePage('queue')}
+        onToggleComments={() => setIsCommentsOpen(!isCommentsOpen)}
+        isCommentsOpen={isCommentsOpen}
       />
     </div>
   );
 };
-

@@ -1,4 +1,4 @@
-import { SearchResultItem } from '../models/types';
+import { SearchResultItem, CommentItem } from '../models/types';
 
 // Curated demo tracks fallback when offline
 const CURATED_DEMO_TRACKS: SearchResultItem[] = [
@@ -7,48 +7,56 @@ const CURATED_DEMO_TRACKS: SearchResultItem[] = [
     title: 'lofi hip hop radio 📚 - beats to relax/study to',
     channelTitle: 'Lofi Girl',
     thumbnailUrl: 'https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg',
+    duration: 'LIVE',
   },
   {
     videoId: '5qap5aO4i9A',
     title: 'lofi hip hop radio 💤 - beats to sleep/chill to',
     channelTitle: 'Lofi Girl',
     thumbnailUrl: 'https://i.ytimg.com/vi/5qap5aO4i9A/hqdefault.jpg',
+    duration: 'LIVE',
   },
   {
     videoId: 'DWcJFNfaw9c',
     title: 'synthwave radio 🌌 - beats to chill/game to',
     channelTitle: 'Lofi Girl',
     thumbnailUrl: 'https://i.ytimg.com/vi/DWcJFNfaw9c/hqdefault.jpg',
+    duration: 'LIVE',
   },
   {
     videoId: 'kJQP7kiw5Fk',
     title: 'Luis Fonsi - Despacito ft. Daddy Yankee',
     channelTitle: 'Luis Fonsi',
     thumbnailUrl: 'https://i.ytimg.com/vi/kJQP7kiw5Fk/hqdefault.jpg',
+    duration: '4:42',
   },
   {
     videoId: 'JGwWNGJdvx8',
     title: 'Ed Sheeran - Shape of You (Official Music Video)',
     channelTitle: 'Ed Sheeran',
     thumbnailUrl: 'https://i.ytimg.com/vi/JGwWNGJdvx8/hqdefault.jpg',
+    duration: '4:24',
   },
   {
     videoId: 'kXYiU_JCYtU',
     title: 'Numb [Official Music Video] - Linkin Park',
     channelTitle: 'Linkin Park',
     thumbnailUrl: 'https://i.ytimg.com/vi/kXYiU_JCYtU/hqdefault.jpg',
+    duration: '3:07',
   },
   {
     videoId: 'YQHsXMglC9A',
     title: 'Adele - Hello (Official Music Video)',
     channelTitle: 'Adele',
     thumbnailUrl: 'https://i.ytimg.com/vi/YQHsXMglC9A/hqdefault.jpg',
+    duration: '6:07',
   },
   {
     videoId: 'fJ9rUzIMcZQ',
     title: 'Queen – Bohemian Rhapsody (Official Video Remastered)',
     channelTitle: 'Queen Official',
     thumbnailUrl: 'https://i.ytimg.com/vi/fJ9rUzIMcZQ/hqdefault.jpg',
+    duration: '5:59',
   }
 ];
 
@@ -163,7 +171,7 @@ export class YouTubeSearchService {
   }
 
   /**
-   * Parse YouTube HTML search results (Native zero-API-key search engine)
+   * Parse YouTube HTML search results (Native zero-API-key search engine with Duration)
    */
   static parseYouTubeSearchResults(html: string): SearchResultItem[] {
     try {
@@ -182,12 +190,15 @@ export class YouTubeSearchService {
             const channel = vr.ownerText?.runs?.map((r: any) => r.text).join('') || '';
             const thumbs = vr.thumbnail?.thumbnails || [];
             const thumbUrl = thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${vr.videoId}/hqdefault.jpg`;
-            
+            const duration = vr.lengthText?.simpleText ||
+              vr.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText || '';
+
             results.push({
               videoId: vr.videoId,
               title: title || `YouTube Video (${vr.videoId})`,
               channelTitle: channel || 'YouTube',
               thumbnailUrl: thumbUrl.startsWith('//') ? 'https:' + thumbUrl : thumbUrl,
+              duration: duration || undefined,
             });
           }
         }
@@ -216,7 +227,7 @@ export class YouTubeSearchService {
 
   /**
    * Search YouTube: attempts YouTube Data API v3 if key provided,
-   * otherwise or upon error automatically uses Direct YouTube Search Engine
+   * otherwise automatically uses Direct YouTube Search Engine
    */
   static async search(query: string, apiKey?: string): Promise<{ items: SearchResultItem[]; error?: string; source?: 'api' | 'direct' }> {
     const q = query.trim();
@@ -253,15 +264,13 @@ export class YouTubeSearchService {
             publishedAt: item.snippet.publishedAt,
           }));
           return { items, source: 'api' };
-        } else {
-          console.warn('YouTube Data API returned non-OK status:', res.status, res.error, 'Falling back to Direct Search Engine...');
         }
       } catch (err) {
         console.warn('YouTube Data API exception, falling back to Direct Search Engine:', err);
       }
     }
 
-    // Direct YouTube Search (No API key needed, never fails with "api ko hop le")
+    // Direct YouTube Search (No API key needed)
     try {
       const directResults = await this.searchDirect(q);
       if (directResults.length > 0) {
@@ -284,6 +293,61 @@ export class YouTubeSearchService {
       items: filtered.length > 0 ? filtered : CURATED_DEMO_TRACKS,
       source: 'direct',
     };
+  }
+
+  /**
+   * Fetch top comments for a YouTube video
+   */
+  static async fetchComments(videoId: string, apiKey?: string): Promise<CommentItem[]> {
+    // 1. If user provided a YouTube Data API Key, try official commentThreads API
+    if (apiKey && apiKey.trim().length > 10) {
+      try {
+        const url = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${videoId}&maxResults=30&key=${apiKey.trim()}`;
+        const res = await safeFetchJson(url);
+        if (res.ok && res.data?.items) {
+          return res.data.items.map((item: any) => {
+            const snip = item.snippet?.topLevelComment?.snippet;
+            return {
+              id: item.id,
+              author: snip?.authorDisplayName || 'Người dùng YouTube',
+              authorThumb: snip?.authorProfileImageUrl,
+              content: snip?.textDisplay || snip?.textOriginal || '',
+              publishedTime: snip?.publishedAt ? new Date(snip.publishedAt).toLocaleDateString('vi-VN') : '',
+              likeCount: snip?.likeCount || 0,
+            };
+          });
+        }
+      } catch (err) {
+        console.warn('Google API commentThreads error, falling back to Invidious...', err);
+      }
+    }
+
+    // 2. Direct Invidious API fallback (Free, no key required)
+    const instances = [
+      `https://inv.nadeko.net/api/v1/comments/${videoId}`,
+      `https://vid.puffyan.us/api/v1/comments/${videoId}`,
+      `https://invidious.nerdvpn.de/api/v1/comments/${videoId}`,
+    ];
+
+    for (const instUrl of instances) {
+      try {
+        const res = await safeFetchJson(instUrl);
+        if (res.ok && res.data?.comments) {
+          return res.data.comments.map((c: any) => ({
+            id: c.commentId || Math.random().toString(36),
+            author: c.author || 'Người dùng YouTube',
+            authorThumb: c.authorThumbnails?.[0]?.url,
+            content: (c.contentHtml || c.content || '').replace(/<[^>]+>/g, ''),
+            publishedTime: c.publishedText || '',
+            likeCount: c.likeCount || 0,
+          }));
+        }
+      } catch {
+        // try next instance
+      }
+    }
+
+    return [];
   }
 
   static getCuratedTracks(): SearchResultItem[] {

@@ -49,7 +49,17 @@ export interface SearchResultItem {
   title: string;
   channelTitle: string;
   thumbnailUrl: string;
+  duration?: string;
   publishedAt?: string;
+}
+
+export interface CommentItem {
+  id: string;
+  author: string;
+  authorThumb?: string;
+  content: string;
+  publishedTime: string;
+  likeCount?: string | number;
 }
 
 export type ActivePage = 'home' | 'search' | 'queue' | 'playlists' | 'history' | 'settings';

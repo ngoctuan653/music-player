@@ -13,6 +13,7 @@ import {
   Heart,
   Video,
   ListMusic,
+  MessageSquare,
   AlertTriangle
 } from 'lucide-react';
 import { PlayerStatus, RepeatMode } from '../../models/types';
@@ -24,6 +25,8 @@ interface PlayerBarProps {
   onToggleMiniVideo: () => void;
   isMiniVideoOpen: boolean;
   onOpenQueue: () => void;
+  onToggleComments: () => void;
+  isCommentsOpen: boolean;
 }
 
 function formatTime(seconds: number): string {
@@ -37,6 +40,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onToggleMiniVideo,
   isMiniVideoOpen,
   onOpenQueue,
+  onToggleComments,
+  isCommentsOpen,
 }) => {
   const [status, setStatus] = useState<PlayerStatus>(playerService.getStatus());
   const [isFavorite, setIsFavorite] = useState<boolean>(false);
@@ -258,6 +263,20 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           title="Xem hàng đợi phát"
         >
           <ListMusic className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Comments drawer toggle */}
+        <button
+          onClick={onToggleComments}
+          disabled={!currentTrack}
+          className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+            isCommentsOpen
+              ? 'text-red-400 bg-red-500/10'
+              : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
+          }`}
+          title={isCommentsOpen ? 'Ẩn bình luận' : 'Xem bình luận của video'}
+        >
+          <MessageSquare className="w-3.5 h-3.5" />
         </button>
 
         {/* Mini video toggle */}

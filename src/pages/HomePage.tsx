@@ -64,6 +64,7 @@ export const HomePage: React.FC<HomePageProps> = ({
     title: item.title,
     channelTitle: item.channelTitle,
     thumbnailUrl: item.thumbnailUrl,
+    duration: item.duration,
     addedAt: Date.now(),
   });
 
@@ -120,17 +121,29 @@ export const HomePage: React.FC<HomePageProps> = ({
                   </span>
                   <Play className="w-3.5 h-3.5 text-zinc-200 fill-current hidden group-hover:block shrink-0" />
 
-                  <img
-                    src={track.thumbnailUrl}
-                    alt=""
-                    className="w-10 h-7 rounded object-cover bg-zinc-900 shrink-0"
-                  />
+                  <div className="relative w-11 h-7 rounded overflow-hidden shrink-0 bg-zinc-900 border border-white/[0.04]">
+                    <img
+                      src={track.thumbnailUrl}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                    {track.duration && (
+                      <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-[8px] font-mono text-zinc-300 px-0.5 rounded leading-none">
+                        {track.duration}
+                      </span>
+                    )}
+                  </div>
 
                   <div className="min-w-0 flex-1">
                     <p className="text-xs text-zinc-200 truncate group-hover:text-white" title={track.title}>
                       {track.title}
                     </p>
-                    <p className="text-[10px] text-zinc-500 truncate mt-0.5">{track.channelTitle}</p>
+                    <div className="flex items-center gap-2 text-[10px] text-zinc-500 mt-0.5">
+                      <span className="truncate">{track.channelTitle}</span>
+                      {track.duration && (
+                        <span className="font-mono text-zinc-600 shrink-0">• {track.duration}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -192,17 +205,29 @@ export const HomePage: React.FC<HomePageProps> = ({
                   </span>
                   <Play className="w-3.5 h-3.5 text-zinc-200 fill-current hidden group-hover:block shrink-0" />
 
-                  <img
-                    src={item.thumbnailUrl}
-                    alt=""
-                    className="w-10 h-7 rounded object-cover bg-zinc-900 shrink-0"
-                  />
+                  <div className="relative w-11 h-7 rounded overflow-hidden shrink-0 bg-zinc-900 border border-white/[0.04]">
+                    <img
+                      src={item.thumbnailUrl}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                    {item.duration && (
+                      <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-[8px] font-mono text-zinc-300 px-0.5 rounded leading-none">
+                        {item.duration}
+                      </span>
+                    )}
+                  </div>
 
                   <div className="min-w-0 flex-1">
                     <p className="text-xs text-zinc-200 truncate group-hover:text-white" title={item.title}>
                       {item.title}
                     </p>
-                    <p className="text-[10px] text-zinc-500 truncate mt-0.5">{item.channelTitle}</p>
+                    <div className="flex items-center gap-2 text-[10px] text-zinc-500 mt-0.5">
+                      <span className="truncate">{item.channelTitle}</span>
+                      {item.duration && (
+                        <span className="font-mono text-zinc-600 shrink-0">• {item.duration}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
