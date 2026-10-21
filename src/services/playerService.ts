@@ -11,6 +11,7 @@ declare global {
       maximize: () => void;
       close: () => void;
       setAudioOutputDevice?: (deviceId: string) => Promise<boolean>;
+      fetchNet?: (url: string) => Promise<{ ok: boolean; status: number; data?: string; error?: string }>;
       onMediaControl: (callback: (action: string) => void) => () => void;
       setAppBadge?: (text: string) => void;
     };

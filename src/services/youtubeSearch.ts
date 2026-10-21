@@ -52,6 +52,33 @@ const CURATED_DEMO_TRACKS: SearchResultItem[] = [
   }
 ];
 
+async function safeFetchJson(url: string): Promise<{ ok: boolean; status: number; data?: any; error?: string }> {
+  // If running in Electron, use native net.fetch via IPC which has ZERO CORS and ZERO CSP blocks
+  if (typeof window !== 'undefined' && window.electronAPI?.fetchNet) {
+    try {
+      const result = await window.electronAPI.fetchNet(url);
+      if (result.ok && result.data) {
+        return { ok: true, status: result.status, data: JSON.parse(result.data) };
+      }
+      return { ok: false, status: result.status, error: result.error || `HTTP ${result.status}` };
+    } catch (e: any) {
+      console.warn('Electron IPC fetchNet error, trying browser fetch fallback', e);
+    }
+  }
+
+  // Standard browser fetch
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      return { ok: false, status: res.status, error: `HTTP ${res.status}` };
+    }
+    const data = await res.json();
+    return { ok: true, status: res.status, data };
+  } catch (err: any) {
+    return { ok: false, status: 500, error: err.message || 'Lỗi mạng' };
+  }
+}
+
 export class YouTubeSearchService {
   /**
    * Extract video ID from various YouTube URL formats or return valid 11-char ID
@@ -103,14 +130,13 @@ export class YouTubeSearchService {
   static async fetchInfoViaOEmbed(videoId: string): Promise<SearchResultItem> {
     const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
     try {
-      const response = await fetch(oembedUrl);
-      if (response.ok) {
-        const data = await response.json();
+      const res = await safeFetchJson(oembedUrl);
+      if (res.ok && res.data) {
         return {
           videoId,
-          title: data.title || `YouTube Video (${videoId})`,
-          channelTitle: data.author_name || 'YouTube',
-          thumbnailUrl: data.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          title: res.data.title || `YouTube Video (${videoId})`,
+          channelTitle: res.data.author_name || 'YouTube',
+          thumbnailUrl: res.data.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
         };
       }
     } catch (e) {
@@ -166,16 +192,16 @@ export class YouTubeSearchService {
         key: apiKey,
       });
 
-      const response = await fetch(`https://www.googleapis.com/youtube/v3/search?${params.toString()}`);
+      const res = await safeFetchJson(`https://www.googleapis.com/youtube/v3/search?${params.toString()}`);
       
-      if (!response.ok) {
-        if (response.status === 403) {
+      if (!res.ok) {
+        if (res.status === 403) {
           return {
             items: CURATED_DEMO_TRACKS,
             error: 'YouTube API Key hết hạn mức (Quota Exceeded) hoặc không có quyền truy cập YouTube Data API v3.',
           };
         }
-        if (response.status === 400) {
+        if (res.status === 400) {
           return {
             items: CURATED_DEMO_TRACKS,
             error: 'YouTube API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.',
@@ -183,11 +209,11 @@ export class YouTubeSearchService {
         }
         return {
           items: CURATED_DEMO_TRACKS,
-          error: `Lỗi kết nối YouTube API (HTTP ${response.status}).`,
+          error: `Lỗi kết nối YouTube API (${res.error || `HTTP ${res.status}`}).`,
         };
       }
 
-      const data = await response.json();
+      const data = res.data;
       const items: SearchResultItem[] = (data.items || []).map((item: any) => ({
         videoId: item.id.videoId,
         title: item.snippet.title,
@@ -209,4 +235,3 @@ export class YouTubeSearchService {
     return CURATED_DEMO_TRACKS;
   }
 }
-

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, shell, nativeImage, session } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, shell, nativeImage, session, net } from 'electron';
 import path from 'path';
 
 let mainWindow: BrowserWindow | null = null;
@@ -14,6 +14,7 @@ function setupNetworkInterceptors() {
       '*://*.googlevideo.com/*',
       '*://*.ytimg.com/*',
       '*://*.google.com/*',
+      '*://*.googleapis.com/*',
     ],
   };
 
@@ -27,11 +28,15 @@ function setupNetworkInterceptors() {
     callback({ cancel: false, requestHeaders: headers });
   });
 
-  // Strip restrictive framing headers from YouTube responses
+  // Strip restrictive framing headers and allow CORS from YouTube / Google APIs
   session.defaultSession.webRequest.onHeadersReceived(filter, (details, callback) => {
     const responseHeaders = { ...details.responseHeaders };
     delete responseHeaders['x-frame-options'];
     delete responseHeaders['X-Frame-Options'];
+    responseHeaders['access-control-allow-origin'] = ['*'];
+    responseHeaders['access-control-allow-methods'] = ['GET, POST, OPTIONS, HEAD'];
+    responseHeaders['access-control-allow-headers'] = ['*'];
+
     // Remove or soften frame-ancestors in Content-Security-Policy
     if (responseHeaders['content-security-policy']) {
       responseHeaders['content-security-policy'] = responseHeaders['content-security-policy'].map(csp =>
@@ -70,7 +75,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false, // Allow smooth embedded streaming without CORS blocks
+      webSecurity: false, // Allow smooth streaming and direct requests without CORS blocks
     },
     icon: path.join(__dirname, '../public/icon.png'),
     show: false,
@@ -221,6 +226,23 @@ if (!gotTheLock) {
 
     ipcMain.on('window-close', () => {
       mainWindow?.close();
+    });
+
+    // Native fetch IPC handler (completely bypasses web-level CORS and CSP)
+    ipcMain.handle('net-fetch', async (_event, url: string) => {
+      try {
+        const res = await net.fetch(url, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+            'Referer': 'https://www.youtube.com/',
+          },
+        });
+        const text = await res.text();
+        return { ok: res.ok, status: res.status, data: text };
+      } catch (err: any) {
+        return { ok: false, status: 500, error: err.message };
+      }
     });
 
     // IPC audio output device routing across all frames & elements
