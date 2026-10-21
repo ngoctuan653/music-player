@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  Home, 
+  Compass, 
   Search, 
   ListMusic, 
   FolderHeart, 
   History, 
-  Settings, 
+  Sliders, 
   Plus, 
-  Headphones,
+  Disc,
   Heart
 } from 'lucide-react';
 import { ActivePage, Playlist } from '../../models/types';
@@ -35,18 +35,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, []);
 
   const navItems = [
-    { id: 'home', label: 'Trang chủ', icon: Home },
+    { id: 'home', label: 'Khám phá', icon: Compass },
     { id: 'search', label: 'Tìm kiếm', icon: Search },
-    { id: 'queue', label: 'Hàng đợi phát', icon: ListMusic },
+    { id: 'queue', label: 'Hàng đợi', icon: ListMusic },
     { id: 'playlists', label: 'Danh sách phát', icon: FolderHeart },
-    { id: 'history', label: 'Lịch sử nghe', icon: History },
-    { id: 'settings', label: 'Cài đặt', icon: Settings },
+    { id: 'history', label: 'Lịch sử', icon: History },
+    { id: 'settings', label: 'Cài đặt', icon: Sliders },
   ];
 
   return (
-    <aside className="w-60 bg-[#121212] flex flex-col h-full border-r border-[#222222] select-none text-sm">
-      {/* Nav List */}
-      <div className="p-3 space-y-1">
+    <aside className="w-48 bg-[#0c0c0f] flex flex-col h-full border-r border-white/[0.06] select-none text-xs shrink-0">
+      {/* Navigation */}
+      <div className="p-2 space-y-0.5">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activePage === item.id;
@@ -54,34 +54,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               key={item.id}
               onClick={() => onNavigate(item.id as ActivePage)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors ${
+              className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded transition-all text-left relative ${
                 isActive
-                  ? 'bg-red-600/15 text-red-500 font-semibold'
-                  : 'text-gray-300 hover:text-white hover:bg-[#1f1f1f]'
+                  ? 'bg-white/[0.06] text-white font-medium'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.02]'
               }`}
             >
-              <Icon className={`w-5 h-5 ${isActive ? 'text-red-500' : 'text-gray-400'}`} />
-              <span>{item.label}</span>
+              {isActive && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-3 bg-red-500 rounded-r" />
+              )}
+              <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-red-400' : 'text-zinc-500'}`} />
+              <span className="truncate">{item.label}</span>
             </button>
           );
         })}
       </div>
 
-      <div className="mx-3 my-2 border-t border-[#262626]" />
+      <div className="mx-2 my-1 border-t border-white/[0.05]" />
 
-      {/* Playlist Section Header */}
-      <div className="px-4 py-2 flex items-center justify-between text-xs font-semibold text-gray-400 uppercase tracking-wider">
-        <span>Playlist của bạn</span>
+      {/* Playlists Header */}
+      <div className="px-3 py-1 flex items-center justify-between text-[10px] font-mono text-zinc-500 uppercase tracking-wider">
+        <span>Playlists</span>
         <button
           onClick={onCreatePlaylistClick}
-          className="p-1 hover:text-white hover:bg-[#222] rounded transition-colors"
-          title="Tạo playlist mới"
+          className="p-0.5 hover:text-white rounded transition-colors"
+          title="Tạo playlist"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      {/* Playlists List */}
+      {/* Playlists items */}
       <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
         {playlists.map((pl) => (
           <button
@@ -90,25 +93,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onNavigate('playlists');
               if (onSelectPlaylist) onSelectPlaylist(pl.id);
             }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-gray-300 hover:text-white hover:bg-[#1a1a1a] transition-colors truncate text-xs"
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-left text-zinc-400 hover:text-white hover:bg-white/[0.03] transition-colors truncate text-[11px]"
           >
             {pl.id === 'favorites' ? (
-              <Heart className="w-4 h-4 text-red-500 shrink-0 fill-red-500" />
+              <Heart className="w-3.5 h-3.5 text-red-500 shrink-0 fill-red-500/80" />
             ) : (
-              <Headphones className="w-4 h-4 text-gray-500 shrink-0" />
+              <Disc className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
             )}
             <span className="truncate flex-1">{pl.name}</span>
-            <span className="text-[10px] text-gray-500 shrink-0">{pl.tracks.length}</span>
+            <span className="text-[10px] font-mono text-zinc-600 shrink-0">{pl.tracks.length}</span>
           </button>
         ))}
       </div>
 
-      {/* Bottom Info */}
-      <div className="p-3 border-t border-[#222222] text-[11px] text-gray-500 flex items-center justify-between">
-        <span>Windows Desktop</span>
-        <span className="text-gray-600">v1.0.0</span>
+      {/* Footer Info */}
+      <div className="px-3 py-2 border-t border-white/[0.05] text-[10px] font-mono text-zinc-600 flex items-center justify-between">
+        <span>HI-FI BUS</span>
+        <span className="text-zinc-700">v1.1</span>
       </div>
     </aside>
   );
 };
-

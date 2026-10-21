@@ -8,20 +8,18 @@ export default {
   theme: {
     extend: {
       colors: {
-        yt: {
-          bg: '#0f0f0f',
-          surface: '#1e1e1e',
-          card: '#272727',
-          hover: '#383838',
-          border: '#3f3f3f',
-          red: '#ff0000',
-          accent: '#ff4e45',
-          text: '#f1f1f1',
-          muted: '#aaaaaa'
-        }
-      }
+        chassis: 'var(--chassis)',
+        panel: 'var(--panel)',
+        'panel-hover': 'var(--panel-hover)',
+        'panel-active': 'var(--panel-active)',
+        hairline: 'var(--hairline)',
+        'hairline-active': 'var(--hairline-active)',
+        tally: 'var(--tally-red)',
+        'legend-silver': 'var(--legend-silver)',
+        'legend-muted': 'var(--legend-muted)',
+        'legend-subtle': 'var(--legend-subtle)',
+      },
     },
   },
   plugins: [],
 }
-

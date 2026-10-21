@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Sparkles, Plus, Clock, Link, Compass } from 'lucide-react';
+import { Play, Plus, Clock, Link as LinkIcon, Compass, FolderPlus } from 'lucide-react';
 import { TrackReference, SearchResultItem } from '../models/types';
 import { YouTubeSearchService } from '../services/youtubeSearch';
 import { playlistService } from '../services/playlistService';
@@ -23,7 +23,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [curatedTracks, setCuratedTracks] = useState<SearchResultItem[]>([]);
 
   useEffect(() => {
-    setHistory(LocalStorageManager.getHistory().slice(0, 8));
+    setHistory(LocalStorageManager.getHistory().slice(0, 6));
     setCuratedTracks(YouTubeSearchService.getCuratedTracks());
   }, []);
 
@@ -36,7 +36,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
     const videoId = YouTubeSearchService.extractVideoId(quickUrl);
     if (!videoId) {
-      setUrlError('Đường link hoặc ID YouTube không hợp lệ.');
+      setUrlError('Link hoặc video ID không hợp lệ.');
       setIsLoadingUrl(false);
       return;
     }
@@ -53,7 +53,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       onPlayTrack(track);
       setQuickUrl('');
     } catch {
-      setUrlError('Không thể lấy thông tin bài hát từ link này.');
+      setUrlError('Không thể lấy metadata của link này.');
     } finally {
       setIsLoadingUrl(false);
     }
@@ -68,94 +68,92 @@ export const HomePage: React.FC<HomePageProps> = ({
   });
 
   return (
-    <div className="p-6 space-y-8 max-w-6xl mx-auto">
-      {/* Hero Banner & Quick Link Input */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-950/60 via-[#1e1e1e] to-[#161616] border border-red-900/30 p-6 md:p-8">
-        <div className="relative z-10 max-w-2xl space-y-3">
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-600/20 text-red-400 text-xs font-semibold">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>YouTube Music Desktop</span>
+    <div className="p-5 max-w-4xl mx-auto space-y-6 select-none text-xs">
+      {/* Quick Stream Input (Studio Command Bar) */}
+      <div className="bg-[#111114] border border-white/[0.06] rounded-lg p-3">
+        <form onSubmit={handleQuickPlayUrl} className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <LinkIcon className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Dán link YouTube (watch?v=, youtu.be, shorts) hoặc video ID..."
+              value={quickUrl}
+              onChange={(e) => {
+                setQuickUrl(e.target.value);
+                setUrlError(null);
+              }}
+              className="w-full bg-[#0a0a0c] border border-white/[0.06] rounded pl-8 pr-3 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-red-500 font-mono transition-colors"
+            />
           </div>
-          <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
-            Nghe nhạc YouTube gọn nhẹ trên Windows 11
-          </h1>
-          <p className="text-gray-400 text-xs md:text-sm">
-            Dán đường link YouTube bất kỳ hoặc tìm kiếm để bắt đầu nghe nhạc trong cửa sổ riêng biệt.
-          </p>
-
-          <form onSubmit={handleQuickPlayUrl} className="pt-2 flex gap-2">
-            <div className="relative flex-1">
-              <Link className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Dán link YouTube (ví dụ: https://www.youtube.com/watch?v=...) hoặc video ID"
-                value={quickUrl}
-                onChange={(e) => {
-                  setQuickUrl(e.target.value);
-                  setUrlError(null);
-                }}
-                className="w-full bg-[#111111]/90 border border-[#383838] rounded-xl pl-9 pr-4 py-2.5 text-xs md:text-sm text-white placeholder-gray-500 focus:outline-none focus:border-red-500 transition-colors"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={isLoadingUrl || !quickUrl.trim()}
-              className="px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-medium text-xs md:text-sm rounded-xl flex items-center gap-2 transition-all shrink-0 shadow-lg"
-            >
-              <Play className="w-4 h-4 fill-current" />
-              <span>{isLoadingUrl ? 'Đang mở...' : 'Phát ngay'}</span>
-            </button>
-          </form>
-
-          {urlError && <p className="text-xs text-red-400">{urlError}</p>}
-        </div>
+          <button
+            type="submit"
+            disabled={isLoadingUrl || !quickUrl.trim()}
+            className="px-3.5 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white font-medium rounded flex items-center gap-1.5 transition-colors shrink-0 text-xs shadow-sm"
+          >
+            <Play className="w-3 h-3 fill-current" />
+            <span>{isLoadingUrl ? 'Đang mở...' : 'Phát'}</span>
+          </button>
+        </form>
+        {urlError && <p className="text-[11px] text-red-400 mt-1.5 font-mono">{urlError}</p>}
       </div>
 
-      {/* Recently Played */}
+      {/* Recently Played (Compact Tape) */}
       {history.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <Clock className="w-4 h-4 text-red-500" />
-              <span>Gần đây đã nghe</span>
-            </h2>
+        <section className="space-y-2">
+          <div className="flex items-center justify-between text-zinc-400 border-b border-white/[0.05] pb-1.5">
+            <div className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+              <Clock className="w-3.5 h-3.5 text-red-500" />
+              <span>Gần đây ({history.length})</span>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3">
-            {history.map((track) => (
+          <div className="divide-y divide-white/[0.03] border border-white/[0.05] rounded-lg bg-[#0e0e11] overflow-hidden">
+            {history.map((track, idx) => (
               <div
                 key={track.videoId + track.addedAt}
-                className="group bg-[#181818] hover:bg-[#222222] border border-[#262626] rounded-xl p-2.5 transition-all flex flex-col justify-between"
+                onClick={() => onPlayTrack(track)}
+                className="group flex items-center justify-between px-3 py-2 hover:bg-white/[0.03] transition-colors cursor-pointer"
               >
-                <div className="relative aspect-video rounded-lg overflow-hidden bg-[#262626] mb-2">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-3">
+                  <span className="w-4 text-center font-mono text-[10px] text-zinc-600 group-hover:hidden">
+                    {idx + 1}
+                  </span>
+                  <Play className="w-3.5 h-3.5 text-zinc-200 fill-current hidden group-hover:block shrink-0" />
+
                   <img
                     src={track.thumbnailUrl}
-                    alt={track.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    alt=""
+                    className="w-10 h-7 rounded object-cover bg-zinc-900 shrink-0"
                   />
-                  <button
-                    onClick={() => onPlayTrack(track)}
-                    className="absolute bottom-2 right-2 w-9 h-9 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-110 active:scale-95"
-                    title="Phát bài này"
-                  >
-                    <Play className="w-4 h-4 fill-current translate-x-0.5" />
-                  </button>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-zinc-200 truncate group-hover:text-white" title={track.title}>
+                      {track.title}
+                    </p>
+                    <p className="text-[10px] text-zinc-500 truncate mt-0.5">{track.channelTitle}</p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-white truncate" title={track.title}>
-                    {track.title}
-                  </p>
-                  <p className="text-[11px] text-gray-400 truncate" title={track.channelTitle}>
-                    {track.channelTitle}
-                  </p>
-                </div>
-                <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t border-[#262626]">
+
+                <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
-                    onClick={() => playlistService.enqueueEnd(track)}
-                    className="p-1 text-gray-400 hover:text-white rounded"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      playlistService.enqueueEnd(track);
+                    }}
+                    className="p-1 text-zinc-400 hover:text-white rounded hover:bg-white/[0.06]"
                     title="Thêm vào hàng đợi"
                   >
                     <Plus className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenAddToPlaylist(track);
+                    }}
+                    className="p-1 text-zinc-400 hover:text-white rounded hover:bg-white/[0.06]"
+                    title="Thêm vào playlist"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -164,76 +162,81 @@ export const HomePage: React.FC<HomePageProps> = ({
         </section>
       )}
 
-      {/* Curated Music Recommendations */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-white flex items-center gap-2">
-            <Compass className="w-4 h-4 text-red-500" />
-            <span>Giai điệu nổi bật & Tuyển tập thư giãn</span>
-          </h2>
+      {/* Curated Feed (Data-dense Typographic Table) */}
+      <section className="space-y-2">
+        <div className="flex items-center justify-between text-zinc-400 border-b border-white/[0.05] pb-1.5">
+          <div className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+            <Compass className="w-3.5 h-3.5 text-red-500" />
+            <span>Tuyển tập giai điệu & Lofi</span>
+          </div>
           <button
             onClick={() => onNavigateToSearch('')}
-            className="text-xs text-gray-400 hover:text-white"
+            className="text-[11px] text-zinc-500 hover:text-zinc-300"
           >
-            Khám phá thêm &rarr;
+            Tìm kiếm &rarr;
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-          {curatedTracks.map((item) => {
+        <div className="divide-y divide-white/[0.03] border border-white/[0.05] rounded-lg bg-[#0e0e11] overflow-hidden">
+          {curatedTracks.map((item, idx) => {
             const track = toTrackRef(item);
             return (
               <div
                 key={item.videoId}
-                className="group bg-[#181818] hover:bg-[#242424] border border-[#282828] rounded-xl p-3 transition-all flex flex-col justify-between"
+                onClick={() => onPlayTrack(track)}
+                className="group flex items-center justify-between px-3 py-2 hover:bg-white/[0.03] transition-colors cursor-pointer"
               >
-                <div className="relative aspect-video rounded-lg overflow-hidden bg-[#262626] mb-2.5">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-3">
+                  <span className="w-4 text-center font-mono text-[10px] text-zinc-600 group-hover:hidden">
+                    {idx + 1}
+                  </span>
+                  <Play className="w-3.5 h-3.5 text-zinc-200 fill-current hidden group-hover:block shrink-0" />
+
                   <img
                     src={item.thumbnailUrl}
-                    alt={item.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    alt=""
+                    className="w-10 h-7 rounded object-cover bg-zinc-900 shrink-0"
                   />
-                  <button
-                    onClick={() => onPlayTrack(track)}
-                    className="absolute bottom-2.5 right-2.5 w-10 h-10 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-xl hover:scale-110 active:scale-95"
-                    title="Phát ngay"
-                  >
-                    <Play className="w-4 h-4 fill-current translate-x-0.5" />
-                  </button>
-                </div>
 
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-xs font-semibold text-white truncate" title={item.title}>
-                    {item.title}
-                  </h3>
-                  <p className="text-[11px] text-gray-400 truncate mt-0.5" title={item.channelTitle}>
-                    {item.channelTitle}
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between mt-3 pt-2 border-t border-[#2a2a2a] text-xs">
-                  <button
-                    onClick={() => onPlayTrack(track)}
-                    className="text-red-400 hover:text-red-300 font-medium text-[11px]"
-                  >
-                    Nghe bài này
-                  </button>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => playlistService.enqueueEnd(track)}
-                      className="p-1 text-gray-400 hover:text-white hover:bg-[#333] rounded"
-                      title="Thêm vào hàng đợi"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => onOpenAddToPlaylist(track)}
-                      className="p-1 text-gray-400 hover:text-white hover:bg-[#333] rounded"
-                      title="Thêm vào playlist"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                    </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-zinc-200 truncate group-hover:text-white" title={item.title}>
+                      {item.title}
+                    </p>
+                    <p className="text-[10px] text-zinc-500 truncate mt-0.5">{item.channelTitle}</p>
                   </div>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      playlistService.enqueueNext(track);
+                    }}
+                    className="px-2 py-0.5 text-[10px] font-mono text-zinc-400 hover:text-white rounded hover:bg-white/[0.06]"
+                    title="Phát tiếp theo"
+                  >
+                    Kế tiếp
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      playlistService.enqueueEnd(track);
+                    }}
+                    className="p-1 text-zinc-400 hover:text-white rounded hover:bg-white/[0.06]"
+                    title="Thêm vào hàng đợi"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenAddToPlaylist(track);
+                    }}
+                    className="p-1 text-zinc-400 hover:text-white rounded hover:bg-white/[0.06]"
+                    title="Thêm vào playlist"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             );
@@ -243,4 +246,3 @@ export const HomePage: React.FC<HomePageProps> = ({
     </div>
   );
 };
-

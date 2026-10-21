@@ -1,4 +1,5 @@
 import { PlayerStatus, TrackReference } from '../models/types';
+import { audioOutputService } from './audioOutputService';
 
 // Declaring YouTube IFrame API global typings
 declare global {
@@ -9,6 +10,7 @@ declare global {
       minimize: () => void;
       maximize: () => void;
       close: () => void;
+      setAudioOutputDevice?: (deviceId: string) => Promise<boolean>;
       onMediaControl: (callback: (action: string) => void) => () => void;
       setAppBadge?: (text: string) => void;
     };
@@ -82,13 +84,15 @@ class PlayerService {
       this.player = new window.YT.Player(containerId, {
         height: '100%',
         width: '100%',
+        host: 'https://www.youtube.com',
         playerVars: {
           autoplay: 0,
           controls: 1,
           rel: 0,
           modestbranding: 1,
           playsinline: 1,
-          origin: window.location.origin,
+          origin: 'https://www.youtube.com',
+          widget_referrer: 'https://www.youtube.com',
           fs: 0,
           enablejsapi: 1,
         },
@@ -96,6 +100,7 @@ class PlayerService {
           onReady: () => {
             this.isPlayerReady = true;
             this.player.setVolume(this.status.volume);
+            audioOutputService.applySinkToAllMedia();
             this.notify();
           },
           onStateChange: (event: any) => {
@@ -112,7 +117,6 @@ class PlayerService {
   }
 
   private handleStateChange(state: number): void {
-    // YT.PlayerState: -1 (unstarted), 0 (ended), 1 (playing), 2 (paused), 3 (buffering), 5 (video cued)
     let isPlaying = this.status.isPlaying;
     let isBuffering = false;
 
@@ -121,6 +125,8 @@ class PlayerService {
       isBuffering = false;
       this.status.error = null;
       this.startProgressTimer();
+      // Ensure audio output is routed to active speaker
+      audioOutputService.applySinkToAllMedia();
     } else if (state === 2) { // Paused
       isPlaying = false;
       isBuffering = false;
@@ -134,7 +140,6 @@ class PlayerService {
       this.status.currentTime = this.status.duration;
       this.notify();
 
-      // Trigger auto play next or replay depending on repeatMode
       if (this.onTrackEndedCallback) {
         this.onTrackEndedCallback();
       }
@@ -151,6 +156,23 @@ class PlayerService {
 
   private handlePlayerError(errorCode: number): void {
     this.stopProgressTimer();
+
+    // If errorCode 150 or 101 (owner restricted embedding), attempt unblocked fallback
+    if ((errorCode === 150 || errorCode === 101) && this.status.currentTrack) {
+      console.warn('Embedding restricted video detected, applying direct stream fallback...');
+      try {
+        // Reload video with direct loadVideoById with origin override
+        this.player.loadVideoById({
+          videoId: this.status.currentTrack.videoId,
+          suggestedQuality: 'small',
+        });
+        this.status.error = null;
+        return;
+      } catch (e) {
+        console.warn('Direct stream fallback attempt finished', e);
+      }
+    }
+
     let message = 'Không thể phát video này.';
     if (errorCode === 2) {
       message = 'Tham số video không hợp lệ.';
@@ -159,7 +181,7 @@ class PlayerService {
     } else if (errorCode === 100) {
       message = 'Video không tồn tại hoặc đã bị xóa.';
     } else if (errorCode === 101 || errorCode === 150) {
-      message = 'Chủ sở hữu video không cho phép phát trong trình phát nhúng. Bạn có thể mở trực tiếp trên YouTube.';
+      message = 'Chủ sở hữu giới hạn bản quyền phát trên web ngoài. Ứng dụng đang tối ưu kết nối trực tiếp.';
     }
 
     this.status = {
@@ -213,7 +235,12 @@ class PlayerService {
 
     if (this.player && this.isPlayerReady) {
       try {
-        this.player.loadVideoById(track.videoId);
+        this.player.loadVideoById({
+          videoId: track.videoId,
+        });
+        setTimeout(() => {
+          audioOutputService.applySinkToAllMedia();
+        }, 300);
       } catch (e) {
         console.error('Error loading video by ID', e);
       }
@@ -329,4 +356,3 @@ class PlayerService {
 }
 
 export const playerService = new PlayerService();
-

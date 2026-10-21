@@ -28,91 +28,78 @@ export const QueuePage: React.FC = () => {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between pb-3 border-b border-[#282828]">
-        <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <ListMusic className="w-5 h-5 text-red-500" />
-            <span>Hàng đợi phát</span>
-          </h1>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {queue.length} bài hát trong hàng đợi
-          </p>
+    <div className="p-5 max-w-4xl mx-auto space-y-4 select-none text-xs">
+      <div className="flex items-center justify-between border-b border-white/[0.05] pb-2">
+        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-zinc-400">
+          <ListMusic className="w-3.5 h-3.5 text-red-500" />
+          <span>HÀNG ĐỢI PHÁT ({queue.length})</span>
         </div>
 
         {queue.length > 0 && (
           <button
             onClick={handleClear}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#222222] hover:bg-red-950/40 text-gray-300 hover:text-red-400 text-xs transition-colors border border-[#333]"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/[0.04] hover:bg-red-950/30 text-zinc-400 hover:text-red-400 font-mono text-[10px] transition-colors border border-white/[0.06]"
           >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Xóa danh sách</span>
+            <Trash2 className="w-3 h-3" />
+            <span>XÓA DANH SÁCH</span>
           </button>
         )}
       </div>
 
       {queue.length === 0 ? (
-        <div className="py-20 text-center text-gray-500 space-y-2">
-          <ListMusic className="w-12 h-12 mx-auto text-gray-600 mb-3 opacity-40" />
-          <p className="text-sm font-medium">Hàng đợi đang trống</p>
-          <p className="text-xs text-gray-600">
-            Hãy chọn một bài hát từ Trang chủ hoặc Tìm kiếm để bắt đầu phát.
-          </p>
+        <div className="py-20 text-center text-zinc-600 font-mono">
+          Hàng đợi đang trống. Hãy chọn bài hát để phát.
         </div>
       ) : (
-        <div className="space-y-1">
+        <div className="divide-y divide-white/[0.03] border border-white/[0.05] rounded-lg bg-[#0e0e11] overflow-hidden">
           {queue.map((track, idx) => {
             const isPlaying = idx === currentIndex;
             return (
               <div
                 key={`${track.videoId}_${idx}`}
                 onClick={() => handlePlayIndex(idx)}
-                className={`group flex items-center justify-between p-2.5 rounded-xl transition-all cursor-pointer border ${
+                className={`group flex items-center justify-between px-3 py-2 transition-colors cursor-pointer ${
                   isPlaying
-                    ? 'bg-red-950/20 border-red-800/40 text-white'
-                    : 'hover:bg-[#1a1a1a] border-transparent text-gray-300'
+                    ? 'bg-red-500/10 text-white font-medium'
+                    : 'hover:bg-white/[0.03] text-zinc-300'
                 }`}
               >
-                <div className="flex items-center gap-3 min-w-0 flex-1 pr-3">
-                  <div className="w-6 text-center text-xs font-mono shrink-0">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-3">
+                  <div className="w-4 text-center font-mono text-[10px] shrink-0">
                     {isPlaying ? (
-                      <Volume2 className="w-4 h-4 text-red-500 animate-pulse mx-auto" />
+                      <Volume2 className="w-3.5 h-3.5 text-red-500 animate-pulse mx-auto" />
                     ) : (
-                      <span className="text-gray-500 group-hover:hidden">{idx + 1}</span>
+                      <span className="text-zinc-600 group-hover:hidden">{idx + 1}</span>
                     )}
                     {!isPlaying && (
-                      <Play className="w-3.5 h-3.5 text-gray-400 fill-current hidden group-hover:block mx-auto" />
+                      <Play className="w-3 h-3 text-zinc-300 fill-current hidden group-hover:block mx-auto" />
                     )}
                   </div>
 
                   <img
                     src={track.thumbnailUrl}
                     alt=""
-                    className="w-12 h-8 rounded object-cover bg-[#242424] shrink-0"
+                    className="w-10 h-7 rounded object-cover bg-zinc-900 shrink-0"
                   />
 
                   <div className="min-w-0 flex-1">
                     <p
-                      className={`text-xs md:text-sm font-medium truncate ${
-                        isPlaying ? 'text-red-400 font-semibold' : 'text-gray-200'
-                      }`}
+                      className={`text-xs truncate ${isPlaying ? 'text-red-400' : 'text-zinc-200'}`}
                       title={track.title}
                     >
                       {track.title}
                     </p>
-                    <p className="text-[11px] text-gray-500 truncate" title={track.channelTitle}>
-                      {track.channelTitle}
-                    </p>
+                    <p className="text-[10px] text-zinc-500 truncate mt-0.5">{track.channelTitle}</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={(e) => handleRemove(idx, e)}
-                    className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-[#252525] rounded transition-colors"
+                    className="p-1 text-zinc-500 hover:text-red-400 rounded hover:bg-white/[0.05]"
                     title="Xóa khỏi hàng đợi"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>

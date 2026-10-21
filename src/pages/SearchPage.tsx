@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search as SearchIcon, Play, Plus, ListPlus, FolderPlus, X, AlertCircle, Info } from 'lucide-react';
+import { Search as SearchIcon, Play, Plus, FolderPlus, X, AlertCircle, Info } from 'lucide-react';
 import { SearchResultItem, TrackReference } from '../models/types';
 import { YouTubeSearchService } from '../services/youtubeSearch';
 import { playlistService } from '../services/playlistService';
@@ -52,7 +52,6 @@ export const SearchPage: React.FC<SearchPageProps> = ({
       return;
     }
 
-    // Debounce search by 400ms
     debounceTimerRef.current = setTimeout(() => {
       performSearch(query);
     }, 400);
@@ -80,159 +79,138 @@ export const SearchPage: React.FC<SearchPageProps> = ({
   });
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      {/* Search Header Input */}
+    <div className="p-5 max-w-4xl mx-auto space-y-4 select-none text-xs">
+      {/* Search Bar (Command Line Aesthetic) */}
       <div className="relative">
-        <SearchIcon className="w-5 h-5 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2" />
+        <SearchIcon className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
         <input
           type="text"
           autoFocus
-          placeholder="Tìm bài hát, nghệ sĩ hoặc dán trực tiếp link / ID YouTube..."
+          placeholder="Tìm bài hát, nghệ sĩ hoặc dán trực tiếp link..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="w-full bg-[#1c1c1c] border border-[#333333] rounded-2xl pl-12 pr-10 py-3.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-red-500 transition-colors shadow-inner"
+          className="w-full bg-[#111114] border border-white/[0.08] rounded pl-9 pr-8 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-red-500 font-mono transition-colors"
         />
         {query && (
           <button
             onClick={() => setQuery('')}
-            className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded-full hover:bg-[#333]"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-zinc-500 hover:text-white"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
         )}
       </div>
 
-      {/* API Notice / Info banner */}
+      {/* Notice Banner if without API Key */}
       {!apiKey && (
-        <div className="bg-[#1e1c14] border border-[#4d3e18] rounded-xl p-3.5 flex items-start gap-3 text-xs text-[#eed187]">
-          <Info className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
-          <div className="flex-1 space-y-1">
-            <p className="font-semibold text-amber-300">
-              Chế độ tìm kiếm qua Link & Nhạc tuyển chọn (Chưa cấu hình API Key)
-            </p>
-            <p className="text-amber-200/80 leading-relaxed">
-              Bạn có thể dán link video YouTube bất kỳ vào ô tìm kiếm để nghe ngay lập tức. Để tìm kiếm trực tiếp kho video YouTube, bạn có thể nhập <strong>YouTube Data API Key</strong> miễn phí của Google.
-            </p>
+        <div className="bg-[#14130d] border border-amber-900/40 rounded p-2.5 flex items-start justify-between gap-3 text-[11px] text-amber-200/80">
+          <div className="flex items-start gap-2">
+            <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+            <span>
+              Chế độ Direct Link & Gợi ý. Bạn có thể dán link YouTube bất kỳ để nghe ngay, hoặc thêm API Key trong Cài đặt để tìm kiếm tự do.
+            </span>
           </div>
           <button
             onClick={onNavigateToSettings}
-            className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-medium rounded-lg shrink-0 transition-colors border border-amber-500/30"
+            className="text-[10px] font-mono underline text-amber-300 hover:text-white shrink-0"
           >
-            Thêm API Key
+            Cài đặt
           </button>
         </div>
       )}
 
       {/* Error notification banner */}
       {errorMsg && (
-        <div className="bg-red-950/40 border border-red-800/50 rounded-xl p-3.5 flex items-center gap-3 text-xs text-red-300">
-          <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-          <span className="flex-1">{errorMsg}</span>
+        <div className="bg-red-950/30 border border-red-900/40 rounded p-2.5 flex items-center gap-2 text-[11px] text-red-300 font-mono">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-400" />
+          <span>{errorMsg}</span>
         </div>
       )}
 
-      {/* Search Results List */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs text-gray-400 px-3 pb-1 border-b border-[#252525]">
-          <span>KẾT QUẢ TÌM KIẾM ({results.length})</span>
-          {isLoading && (
-            <span className="flex items-center gap-1.5 text-red-400">
-              <span className="w-2.5 h-2.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
-              Đang tìm kiếm...
-            </span>
-          )}
-        </div>
-
-        {results.length === 0 && !isLoading ? (
-          <div className="py-16 text-center text-gray-500 text-xs space-y-2">
-            <SearchIcon className="w-8 h-8 mx-auto text-gray-600 mb-2 opacity-50" />
-            <p>Không tìm thấy kết quả phù hợp cho "{query}"</p>
-            <p className="text-[11px] text-gray-600">
-              Hãy thử tìm với từ khóa khác hoặc dán link video YouTube cụ thể.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-1">
-            {results.map((item) => {
-              const track = toTrackRef(item);
-              return (
-                <div
-                  key={item.videoId}
-                  className="group flex items-center justify-between p-2.5 rounded-xl hover:bg-[#1f1f1f] transition-colors border border-transparent hover:border-[#2d2d2d]"
-                >
-                  {/* Left: Thumbnail & Details */}
-                  <div className="flex items-center gap-3 min-w-0 flex-1 pr-4">
-                    <div className="relative w-16 h-10 rounded-lg overflow-hidden bg-[#222222] shrink-0 group-hover:shadow-md">
-                      <img
-                        src={item.thumbnailUrl}
-                        alt={item.title}
-                        className="w-full h-full object-cover"
-                      />
-                      <button
-                        onClick={() => onPlayTrack(track)}
-                        className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Phát ngay"
-                      >
-                        <Play className="w-4 h-4 text-white fill-white translate-x-0.5" />
-                      </button>
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <p
-                        onClick={() => onPlayTrack(track)}
-                        className="text-xs md:text-sm font-medium text-white truncate hover:underline cursor-pointer"
-                        title={item.title}
-                      >
-                        {item.title}
-                      </p>
-                      <p className="text-[11px] text-gray-400 truncate mt-0.5" title={item.channelTitle}>
-                        {item.channelTitle}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Right Actions */}
-                  <div className="flex items-center gap-1.5 shrink-0 opacity-80 group-hover:opacity-100">
-                    <button
-                      onClick={() => onPlayTrack(track)}
-                      className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium flex items-center gap-1 transition-colors"
-                      title="Phát bài này"
-                    >
-                      <Play className="w-3 h-3 fill-current" />
-                      <span className="hidden sm:inline">Phát</span>
-                    </button>
-
-                    <button
-                      onClick={() => playlistService.enqueueNext(track)}
-                      className="p-1.5 text-gray-400 hover:text-white hover:bg-[#2c2c2c] rounded-lg transition-colors"
-                      title="Phát kế tiếp (Enqueue Next)"
-                    >
-                      <ListPlus className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      onClick={() => playlistService.enqueueEnd(track)}
-                      className="p-1.5 text-gray-400 hover:text-white hover:bg-[#2c2c2c] rounded-lg transition-colors"
-                      title="Thêm vào cuối hàng đợi"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      onClick={() => onOpenAddToPlaylist(track)}
-                      className="p-1.5 text-gray-400 hover:text-white hover:bg-[#2c2c2c] rounded-lg transition-colors"
-                      title="Thêm vào playlist"
-                    >
-                      <FolderPlus className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+      {/* Results Header */}
+      <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 border-b border-white/[0.05] pb-1">
+        <span>KẾT QUẢ ({results.length})</span>
+        {isLoading && (
+          <span className="flex items-center gap-1.5 text-red-400">
+            <span className="w-2 h-2 border border-red-400 border-t-transparent rounded-full animate-spin" />
+            ĐANG TÌM...
+          </span>
         )}
       </div>
+
+      {/* Results Table */}
+      {results.length === 0 && !isLoading ? (
+        <div className="py-16 text-center text-zinc-600 font-mono text-xs">
+          Không tìm thấy bài hát phù hợp.
+        </div>
+      ) : (
+        <div className="divide-y divide-white/[0.03] border border-white/[0.05] rounded-lg bg-[#0e0e11] overflow-hidden">
+          {results.map((item, idx) => {
+            const track = toTrackRef(item);
+            return (
+              <div
+                key={item.videoId}
+                onClick={() => onPlayTrack(track)}
+                className="group flex items-center justify-between px-3 py-2 hover:bg-white/[0.03] transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-3">
+                  <span className="w-4 text-center font-mono text-[10px] text-zinc-600 group-hover:hidden">
+                    {idx + 1}
+                  </span>
+                  <Play className="w-3.5 h-3.5 text-zinc-200 fill-current hidden group-hover:block shrink-0" />
+
+                  <img
+                    src={item.thumbnailUrl}
+                    alt=""
+                    className="w-10 h-7 rounded object-cover bg-zinc-900 shrink-0"
+                  />
+
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-zinc-200 truncate group-hover:text-white" title={item.title}>
+                      {item.title}
+                    </p>
+                    <p className="text-[10px] text-zinc-500 truncate mt-0.5">{item.channelTitle}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      playlistService.enqueueNext(track);
+                    }}
+                    className="px-2 py-0.5 text-[10px] font-mono text-zinc-400 hover:text-white rounded hover:bg-white/[0.06]"
+                    title="Phát tiếp theo"
+                  >
+                    Kế tiếp
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      playlistService.enqueueEnd(track);
+                    }}
+                    className="p-1 text-zinc-400 hover:text-white rounded hover:bg-white/[0.06]"
+                    title="Thêm vào hàng đợi"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenAddToPlaylist(track);
+                    }}
+                    className="p-1 text-zinc-400 hover:text-white rounded hover:bg-white/[0.06]"
+                    title="Thêm vào playlist"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

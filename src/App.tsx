@@ -68,7 +68,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#0f0f0f] text-[#f1f1f1] select-none overflow-hidden font-sans">
+    <div className="flex flex-col h-screen w-screen bg-[#09090b] text-[#f4f4f5] select-none overflow-hidden font-sans">
       {/* Frameless Top Window Bar */}
       <TitleBar />
 
@@ -84,7 +84,7 @@ export const App: React.FC = () => {
           onCreatePlaylistClick={handleCreatePlaylistPrompt}
         />
 
-        <main className="flex-1 overflow-y-auto bg-[#101010] relative">
+        <main className="flex-1 overflow-y-auto bg-[#0c0c0e] relative">
           {activePage === 'home' && (
             <HomePage
               onPlayTrack={handlePlayTrack}
@@ -145,3 +145,4 @@ export const App: React.FC = () => {
     </div>
   );
 };
+

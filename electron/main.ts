@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, shell, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, shell, nativeImage, session } from 'electron';
 import path from 'path';
 
 let mainWindow: BrowserWindow | null = null;
@@ -7,19 +7,70 @@ let isQuitting = false;
 
 const isDev = process.env.NODE_ENV !== 'production' || !app.isPackaged;
 
+function setupNetworkInterceptors() {
+  const filter = {
+    urls: [
+      '*://*.youtube.com/*',
+      '*://*.googlevideo.com/*',
+      '*://*.ytimg.com/*',
+      '*://*.google.com/*',
+    ],
+  };
+
+  // Rewrite headers so YouTube player does not reject requests with Error 150/101
+  session.defaultSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
+    const headers = { ...details.requestHeaders };
+    headers['Referer'] = 'https://www.youtube.com/';
+    headers['Origin'] = 'https://www.youtube.com';
+    headers['User-Agent'] =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
+    callback({ cancel: false, requestHeaders: headers });
+  });
+
+  // Strip restrictive framing headers from YouTube responses
+  session.defaultSession.webRequest.onHeadersReceived(filter, (details, callback) => {
+    const responseHeaders = { ...details.responseHeaders };
+    delete responseHeaders['x-frame-options'];
+    delete responseHeaders['X-Frame-Options'];
+    // Remove or soften frame-ancestors in Content-Security-Policy
+    if (responseHeaders['content-security-policy']) {
+      responseHeaders['content-security-policy'] = responseHeaders['content-security-policy'].map(csp =>
+        csp.replace(/frame-ancestors[^;]+;?/gi, '')
+      );
+    }
+    callback({ cancel: false, responseHeaders });
+  });
+
+  // Automatically approve speaker selection and media permissions
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+    if (permission === 'speaker-selection' || permission === 'media') {
+      return true;
+    }
+    return false;
+  });
+
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    if (permission === 'speaker-selection' || permission === 'media') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1100,
+    width: 1080,
     height: 720,
-    minWidth: 850,
-    minHeight: 560,
+    minWidth: 840,
+    minHeight: 540,
     frame: false, // Custom frameless title bar
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#09090b',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: true,
+      webSecurity: false, // Allow smooth embedded streaming without CORS blocks
     },
     icon: path.join(__dirname, '../public/icon.png'),
     show: false,
@@ -60,7 +111,6 @@ function createTray() {
   const iconPath = path.join(__dirname, '../public/icon.png');
   let icon = nativeImage.createFromPath(iconPath);
   if (icon.isEmpty()) {
-    // Fallback 16x16 icon
     icon = nativeImage.createEmpty();
   } else {
     icon = icon.resize({ width: 16, height: 16 });
@@ -151,6 +201,7 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(() => {
+    setupNetworkInterceptors();
     createWindow();
     createTray();
     registerMediaShortcuts();
@@ -172,6 +223,39 @@ if (!gotTheLock) {
       mainWindow?.close();
     });
 
+    // IPC audio output device routing across all frames & elements
+    ipcMain.handle('set-audio-output-device', async (_event, deviceId: string) => {
+      if (!mainWindow) return false;
+      const script = `
+        (async () => {
+          try {
+            const els = Array.from(document.querySelectorAll('audio, video'));
+            for (const el of els) {
+              if (typeof el.setSinkId === 'function') {
+                await el.setSinkId('${deviceId}');
+              }
+            }
+          } catch (e) {
+            console.warn('setSinkId error in document:', e);
+          }
+        })();
+      `;
+      try {
+        await mainWindow.webContents.executeJavaScript(script, true);
+        for (const frame of mainWindow.webContents.mainFrame.frames) {
+          try {
+            await frame.executeJavaScript(script, true);
+          } catch {
+            // cross-origin frame or unloading
+          }
+        }
+        return true;
+      } catch (err) {
+        console.warn('Error routing audio output device via IPC:', err);
+        return false;
+      }
+    });
+
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
@@ -188,4 +272,3 @@ if (!gotTheLock) {
     tray?.destroy();
   });
 }
-
