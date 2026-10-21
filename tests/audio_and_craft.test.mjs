@@ -85,4 +85,37 @@ describe('YouTube Error 150/101 Bypass Header Logic Tests', () => {
     assert.equal(result['X-Frame-Options'], undefined);
     assert.equal(result['content-type'], 'text/html');
   });
+
+  test('Parses raw YouTube search initial data HTML without API key', () => {
+    function parseResults(html) {
+      const match = html.match(/ytInitialData\s*=\s*({.+?});<\/script>/);
+      if (!match) return [];
+      const data = JSON.parse(match[1]);
+      const contents = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+      const results = [];
+      for (const section of contents) {
+        const items = section?.itemSectionRenderer?.contents || [];
+        for (const item of items) {
+          if (item.videoRenderer) {
+            results.push({
+              videoId: item.videoRenderer.videoId,
+              title: item.videoRenderer.title?.runs?.[0]?.text,
+              channelTitle: item.videoRenderer.ownerText?.runs?.[0]?.text
+            });
+          }
+        }
+      }
+      return results;
+    }
+
+    const mockHtml = `
+      <script>var ytInitialData = {"contents":{"twoColumnSearchResultsRenderer":{"primaryContents":{"sectionListRenderer":{"contents":[{"itemSectionRenderer":{"contents":[{"videoRenderer":{"videoId":"mock1234567","title":{"runs":[{"text":"Mock Song"}]},"ownerText":{"runs":[{"text":"Mock Artist"}]}}}]}}]}}}}};</script>
+    `;
+
+    const results = parseResults(mockHtml);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].videoId, 'mock1234567');
+    assert.equal(results[0].title, 'Mock Song');
+    assert.equal(results[0].channelTitle, 'Mock Artist');
+  });
 });

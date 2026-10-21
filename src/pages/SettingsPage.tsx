@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sliders, Key, Check, ShieldCheck, Eye, EyeOff, Save, Speaker } from 'lucide-react';
+import { Sliders, Key, Check, ShieldCheck, Eye, EyeOff, Save, Speaker, Sparkles, Trash2 } from 'lucide-react';
 import { AppSettings } from '../models/types';
 import { LocalStorageManager } from '../storage/localStore';
 import { AudioOutputSelector } from '../components/AudioOutputSelector/AudioOutputSelector';
@@ -21,6 +21,18 @@ export const SettingsPage: React.FC = () => {
     const updated: AppSettings = {
       ...settings,
       apiKey: apiKeyInput.trim(),
+    };
+    LocalStorageManager.saveSettings(updated);
+    setSettings(updated);
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2500);
+  };
+
+  const handleClearApiKey = () => {
+    setApiKeyInput('');
+    const updated: AppSettings = {
+      ...settings,
+      apiKey: '',
     };
     LocalStorageManager.saveSettings(updated);
     setSettings(updated);
@@ -71,23 +83,29 @@ export const SettingsPage: React.FC = () => {
         </div>
       </section>
 
-      {/* YouTube Data API Key */}
+      {/* Direct Search & YouTube Data API Key */}
       <section className="bg-[#111114] border border-white/[0.06] rounded-lg p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <Key className="w-4 h-4 text-amber-400" />
-          <div>
-            <h2 className="text-xs font-semibold text-zinc-200">YouTube Data API v3 Key</h2>
-            <p className="text-[11px] text-zinc-500">
-              Dùng cho tính năng tìm kiếm từ khóa không giới hạn (tùy chọn)
-            </p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Key className="w-4 h-4 text-amber-400" />
+            <div>
+              <h2 className="text-xs font-semibold text-zinc-200">YouTube Search Engine & API Key</h2>
+              <p className="text-[11px] text-zinc-500">
+                Hệ thống tự động sử dụng Direct Search Engine (tìm kiếm trực tiếp không cần API key).
+              </p>
+            </div>
           </div>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20 text-[10px] font-mono">
+            <Sparkles className="w-3 h-3" />
+            DIRECT ENGINE SẴN SÀNG
+          </span>
         </div>
 
         <form onSubmit={handleSaveSettings} className="space-y-2.5">
           <div className="relative">
             <input
               type={showKey ? 'text' : 'password'}
-              placeholder="Nhập khóa API (ví dụ: AIzaSy...)"
+              placeholder="Để trống để dùng Direct Search không cần key, hoặc nhập YouTube Data API v3 key..."
               value={apiKeyInput}
               onChange={(e) => setApiKeyInput(e.target.value)}
               className="w-full bg-[#0a0a0c] border border-white/[0.08] rounded px-3 py-2 pr-9 text-xs font-mono text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-red-500"
@@ -102,9 +120,19 @@ export const SettingsPage: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-between pt-1">
-            <span className="text-[10px] text-zinc-600 font-mono">
-              * Khóa API được lưu cục bộ an toàn trên máy của bạn
-            </span>
+            <div className="flex items-center gap-2">
+              {apiKeyInput && (
+                <button
+                  type="button"
+                  onClick={handleClearApiKey}
+                  className="px-2.5 py-1 text-zinc-400 hover:text-red-400 bg-white/[0.04] hover:bg-white/[0.08] rounded flex items-center gap-1 text-[11px] font-mono transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Xóa Key (Dùng Direct Search)</span>
+                </button>
+              )}
+            </div>
+
             <button
               type="submit"
               className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-medium text-xs rounded flex items-center gap-1.5 transition-colors shadow-sm"
@@ -166,7 +194,7 @@ export const SettingsPage: React.FC = () => {
         <div className="space-y-0.5 text-[11px] leading-relaxed">
           <p className="text-zinc-300 font-medium">Bảo vệ luồng phát & Tuân thủ chính sách</p>
           <p>
-            Ứng dụng sử dụng YouTube Embedded Engine chính thức của Google với cơ chế Native Header Routing để hạn chế tối đa lỗi chặn bản quyền (Error 150/101), không tải trái phép file nhạc, đảm bảo độ ổn định và an toàn cao nhất.
+            Ứng dụng hỗ trợ Direct Search Engine và Native Header Routing để loại bỏ rào cản hạn chế API Key hoặc lỗi bản quyền (Error 150/101), tôn trọng bản quyền phát nhạc và mang lại trải nghiệm tiện lợi tối đa.
           </p>
         </div>
       </section>

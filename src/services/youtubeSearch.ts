@@ -1,6 +1,6 @@
 import { SearchResultItem } from '../models/types';
 
-// Curated demo tracks when offline or without API key
+// Curated demo tracks fallback when offline
 const CURATED_DEMO_TRACKS: SearchResultItem[] = [
   {
     videoId: 'jfKfPfyJRdk',
@@ -52,30 +52,41 @@ const CURATED_DEMO_TRACKS: SearchResultItem[] = [
   }
 ];
 
-async function safeFetchJson(url: string): Promise<{ ok: boolean; status: number; data?: any; error?: string }> {
-  // If running in Electron, use native net.fetch via IPC which has ZERO CORS and ZERO CSP blocks
+async function safeFetchText(url: string): Promise<{ ok: boolean; status: number; text?: string; error?: string }> {
   if (typeof window !== 'undefined' && window.electronAPI?.fetchNet) {
     try {
       const result = await window.electronAPI.fetchNet(url);
       if (result.ok && result.data) {
-        return { ok: true, status: result.status, data: JSON.parse(result.data) };
+        return { ok: true, status: result.status, text: result.data };
       }
       return { ok: false, status: result.status, error: result.error || `HTTP ${result.status}` };
     } catch (e: any) {
-      console.warn('Electron IPC fetchNet error, trying browser fetch fallback', e);
+      console.warn('Electron IPC fetchNet error, fallback to browser fetch', e);
     }
   }
 
-  // Standard browser fetch
   try {
     const res = await fetch(url);
     if (!res.ok) {
       return { ok: false, status: res.status, error: `HTTP ${res.status}` };
     }
-    const data = await res.json();
-    return { ok: true, status: res.status, data };
+    const text = await res.text();
+    return { ok: true, status: res.status, text };
   } catch (err: any) {
     return { ok: false, status: 500, error: err.message || 'Lỗi mạng' };
+  }
+}
+
+async function safeFetchJson(url: string): Promise<{ ok: boolean; status: number; data?: any; error?: string }> {
+  const textRes = await safeFetchText(url);
+  if (!textRes.ok || !textRes.text) {
+    return { ok: false, status: textRes.status, error: textRes.error };
+  }
+  try {
+    const data = JSON.parse(textRes.text);
+    return { ok: true, status: textRes.status, data };
+  } catch {
+    return { ok: false, status: 500, error: 'Không thể phân tích phản hồi JSON' };
   }
 }
 
@@ -152,83 +163,127 @@ export class YouTubeSearchService {
   }
 
   /**
-   * Search YouTube videos via YouTube Data API v3 or curated fallback
+   * Parse YouTube HTML search results (Native zero-API-key search engine)
    */
-  static async search(query: string, apiKey?: string): Promise<{ items: SearchResultItem[]; error?: string }> {
+  static parseYouTubeSearchResults(html: string): SearchResultItem[] {
+    try {
+      const match = html.match(/ytInitialData\s*=\s*({.+?});<\/script>/);
+      if (!match) return [];
+      const data = JSON.parse(match[1]);
+      const sections = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+      const results: SearchResultItem[] = [];
+
+      for (const section of sections) {
+        const items = section?.itemSectionRenderer?.contents || [];
+        for (const item of items) {
+          const vr = item.videoRenderer;
+          if (vr && vr.videoId) {
+            const title = vr.title?.runs?.map((r: any) => r.text).join('') || vr.title?.accessibility?.accessibilityData?.label || '';
+            const channel = vr.ownerText?.runs?.map((r: any) => r.text).join('') || '';
+            const thumbs = vr.thumbnail?.thumbnails || [];
+            const thumbUrl = thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${vr.videoId}/hqdefault.jpg`;
+            
+            results.push({
+              videoId: vr.videoId,
+              title: title || `YouTube Video (${vr.videoId})`,
+              channelTitle: channel || 'YouTube',
+              thumbnailUrl: thumbUrl.startsWith('//') ? 'https:' + thumbUrl : thumbUrl,
+            });
+          }
+        }
+      }
+      return results;
+    } catch (err) {
+      console.warn('Error parsing YouTube HTML search results:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Search YouTube via Direct Web Search Engine (Free, instant, no key required)
+   */
+  static async searchDirect(query: string): Promise<SearchResultItem[]> {
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    const res = await safeFetchText(searchUrl);
+    if (res.ok && res.text) {
+      const parsed = this.parseYouTubeSearchResults(res.text);
+      if (parsed.length > 0) {
+        return parsed;
+      }
+    }
+    return [];
+  }
+
+  /**
+   * Search YouTube: attempts YouTube Data API v3 if key provided,
+   * otherwise or upon error automatically uses Direct YouTube Search Engine
+   */
+  static async search(query: string, apiKey?: string): Promise<{ items: SearchResultItem[]; error?: string; source?: 'api' | 'direct' }> {
     const q = query.trim();
     if (!q) {
-      return { items: CURATED_DEMO_TRACKS };
+      return { items: CURATED_DEMO_TRACKS, source: 'direct' };
     }
 
     // Check if user entered a direct YouTube URL or Video ID
     const extractedId = this.extractVideoId(q);
     if (extractedId) {
       const item = await this.fetchInfoViaOEmbed(extractedId);
-      return { items: [item] };
+      return { items: [item], source: 'direct' };
     }
 
-    // If API key is not provided, return filtered curated demo tracks with a hint
-    if (!apiKey) {
-      const filtered = CURATED_DEMO_TRACKS.filter(item => 
-        item.title.toLowerCase().includes(q.toLowerCase()) || 
-        item.channelTitle.toLowerCase().includes(q.toLowerCase())
-      );
-      
-      return {
-        items: filtered.length > 0 ? filtered : CURATED_DEMO_TRACKS,
-        error: !apiKey 
-          ? 'Chưa cấu hình YouTube API Key. Bạn có thể dán link YouTube bất kỳ để nghe ngay, hoặc vào Cài đặt để thêm API Key nhằm tìm kiếm mọi video.'
-          : undefined,
-      };
+    // If API key is provided and looks like a Google API key, try official API first
+    if (apiKey && apiKey.trim().length > 10) {
+      try {
+        const params = new URLSearchParams({
+          part: 'snippet',
+          type: 'video',
+          maxResults: '25',
+          q: q,
+          key: apiKey.trim(),
+        });
+
+        const res = await safeFetchJson(`https://www.googleapis.com/youtube/v3/search?${params.toString()}`);
+        
+        if (res.ok && res.data?.items) {
+          const items: SearchResultItem[] = res.data.items.map((item: any) => ({
+            videoId: item.id.videoId,
+            title: item.snippet.title,
+            channelTitle: item.snippet.channelTitle,
+            thumbnailUrl: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+            publishedAt: item.snippet.publishedAt,
+          }));
+          return { items, source: 'api' };
+        } else {
+          console.warn('YouTube Data API returned non-OK status:', res.status, res.error, 'Falling back to Direct Search Engine...');
+        }
+      } catch (err) {
+        console.warn('YouTube Data API exception, falling back to Direct Search Engine:', err);
+      }
     }
 
-    // Query official YouTube Data API v3
+    // Direct YouTube Search (No API key needed, never fails with "api ko hop le")
     try {
-      const params = new URLSearchParams({
-        part: 'snippet',
-        type: 'video',
-        maxResults: '25',
-        q: q,
-        key: apiKey,
-      });
-
-      const res = await safeFetchJson(`https://www.googleapis.com/youtube/v3/search?${params.toString()}`);
-      
-      if (!res.ok) {
-        if (res.status === 403) {
-          return {
-            items: CURATED_DEMO_TRACKS,
-            error: 'YouTube API Key hết hạn mức (Quota Exceeded) hoặc không có quyền truy cập YouTube Data API v3.',
-          };
-        }
-        if (res.status === 400) {
-          return {
-            items: CURATED_DEMO_TRACKS,
-            error: 'YouTube API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.',
-          };
-        }
+      const directResults = await this.searchDirect(q);
+      if (directResults.length > 0) {
         return {
-          items: CURATED_DEMO_TRACKS,
-          error: `Lỗi kết nối YouTube API (${res.error || `HTTP ${res.status}`}).`,
+          items: directResults,
+          source: 'direct',
         };
       }
-
-      const data = res.data;
-      const items: SearchResultItem[] = (data.items || []).map((item: any) => ({
-        videoId: item.id.videoId,
-        title: item.snippet.title,
-        channelTitle: item.snippet.channelTitle,
-        thumbnailUrl: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
-        publishedAt: item.snippet.publishedAt,
-      }));
-
-      return { items };
-    } catch (err: any) {
-      return {
-        items: CURATED_DEMO_TRACKS,
-        error: `Không thể kết nối đến máy chủ YouTube: ${err.message || 'Lỗi mạng'}`,
-      };
+    } catch (e) {
+      console.warn('Direct search engine error:', e);
     }
+
+    // Curated fallback if offline or no results
+    const filtered = CURATED_DEMO_TRACKS.filter(item => 
+      item.title.toLowerCase().includes(q.toLowerCase()) || 
+      item.channelTitle.toLowerCase().includes(q.toLowerCase())
+    );
+
+    return {
+      items: filtered.length > 0 ? filtered : CURATED_DEMO_TRACKS,
+      source: 'direct',
+    };
   }
 
   static getCuratedTracks(): SearchResultItem[] {

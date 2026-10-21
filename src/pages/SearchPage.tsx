@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search as SearchIcon, Play, Plus, FolderPlus, X, AlertCircle, Info } from 'lucide-react';
+import { Search as SearchIcon, Play, Plus, FolderPlus, X, AlertCircle } from 'lucide-react';
 import { SearchResultItem, TrackReference } from '../models/types';
 import { YouTubeSearchService } from '../services/youtubeSearch';
 import { playlistService } from '../services/playlistService';
@@ -9,14 +9,13 @@ interface SearchPageProps {
   onPlayTrack: (track: TrackReference) => void;
   onOpenAddToPlaylist: (track: TrackReference) => void;
   initialQuery?: string;
-  onNavigateToSettings: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export const SearchPage: React.FC<SearchPageProps> = ({
   onPlayTrack,
   onOpenAddToPlaylist,
   initialQuery = '',
-  onNavigateToSettings,
 }) => {
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<SearchResultItem[]>([]);
@@ -101,24 +100,6 @@ export const SearchPage: React.FC<SearchPageProps> = ({
           </button>
         )}
       </div>
-
-      {/* Notice Banner if without API Key */}
-      {!apiKey && (
-        <div className="bg-[#14130d] border border-amber-900/40 rounded p-2.5 flex items-start justify-between gap-3 text-[11px] text-amber-200/80">
-          <div className="flex items-start gap-2">
-            <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-            <span>
-              Chế độ Direct Link & Gợi ý. Bạn có thể dán link YouTube bất kỳ để nghe ngay, hoặc thêm API Key trong Cài đặt để tìm kiếm tự do.
-            </span>
-          </div>
-          <button
-            onClick={onNavigateToSettings}
-            className="text-[10px] font-mono underline text-amber-300 hover:text-white shrink-0"
-          >
-            Cài đặt
-          </button>
-        </div>
-      )}
 
       {/* Error notification banner */}
       {errorMsg && (
