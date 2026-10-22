@@ -17,13 +17,14 @@ const DEFAULT_SETTINGS: AppSettings = {
   apiKey: import.meta.env.VITE_YOUTUBE_API_KEY || '',
   autoPlayNext: true,
   theme: 'dark',
+  glassEffect: 'auto',
 };
 
 const DEFAULT_PLAYLISTS: Playlist[] = [
   {
     id: 'favorites',
-    name: 'Bài hát yêu thích',
-    description: 'Danh sách các bài hát bạn yêu thích',
+    name: 'Favorites',
+    description: 'Your favorite tracks',
     tracks: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -31,7 +32,7 @@ const DEFAULT_PLAYLISTS: Playlist[] = [
   {
     id: 'chill-mix',
     name: 'Chill & Relax',
-    description: 'Danh sách giai điệu thư giãn',
+    description: 'Relaxing beats and melodies',
     tracks: [
       {
         videoId: 'jfKfPfyJRdk',
@@ -88,7 +89,13 @@ export class LocalStorageManager {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.PLAYLISTS);
       if (!data) return DEFAULT_PLAYLISTS;
-      return JSON.parse(data);
+      const parsed: Playlist[] = JSON.parse(data);
+      return parsed.map(pl => {
+        if (pl.id === 'favorites' && (pl.name === 'Bài hát yêu thích' || !pl.name)) {
+          return { ...pl, name: 'Favorites', description: 'Your favorite tracks' };
+        }
+        return pl;
+      });
     } catch {
       return DEFAULT_PLAYLISTS;
     }
@@ -100,6 +107,27 @@ export class LocalStorageManager {
     } catch (e) {
       console.error('Failed to save playlists to localStorage', e);
     }
+  }
+
+  private static historyListeners: Set<(history: TrackReference[]) => void> = new Set();
+
+  static subscribeHistory(listener: (history: TrackReference[]) => void): () => void {
+    this.historyListeners.add(listener);
+    listener(this.getHistory());
+    return () => {
+      this.historyListeners.delete(listener);
+    };
+  }
+
+  private static notifyHistory(): void {
+    const history = this.getHistory();
+    this.historyListeners.forEach(listener => {
+      try {
+        listener(history);
+      } catch (err) {
+        console.warn('Error in history listener:', err);
+      }
+    });
   }
 
   static getHistory(): TrackReference[] {
@@ -122,6 +150,7 @@ export class LocalStorageManager {
         history = history.slice(0, 60);
       }
       localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
+      this.notifyHistory();
     } catch (e) {
       console.error('Failed to save history', e);
     }
@@ -129,6 +158,7 @@ export class LocalStorageManager {
 
   static clearHistory(): void {
     localStorage.removeItem(STORAGE_KEYS.HISTORY);
+    this.notifyHistory();
   }
 
   static getSavedQueue(): { queue: TrackReference[]; currentIndex: number } | null {
@@ -148,4 +178,3 @@ export class LocalStorageManager {
     }
   }
 }
-

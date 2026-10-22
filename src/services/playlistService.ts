@@ -1,6 +1,7 @@
 import { Playlist, TrackReference } from '../models/types';
 import { LocalStorageManager } from '../storage/localStore';
 import { playerService } from './playerService';
+import { RecommendationEngine } from './recommendationEngine';
 
 type QueueListener = (queue: TrackReference[], currentIndex: number) => void;
 type PlaylistsListener = (playlists: Playlist[]) => void;
@@ -44,30 +45,25 @@ class PlaylistService {
   }
 
   public playTrackNow(track: TrackReference, sourceList?: TrackReference[]): void {
-    if (sourceList && sourceList.length > 0) {
-      this.queue = [...sourceList];
-      const index = this.queue.findIndex(t => t.videoId === track.videoId);
-      this.currentIndex = index !== -1 ? index : 0;
+    // Search results are not a playback queue. Only tracks explicitly added
+    // to the queue should be considered by Next.
+    void sourceList;
+    const existingIdx = this.queue.findIndex(t => t.videoId === track.videoId);
+    if (existingIdx !== -1) {
+      this.currentIndex = existingIdx;
+    } else if (this.queue.length === 0) {
+      this.queue = [track];
+      this.currentIndex = 0;
     } else {
-      // If song not in queue, insert it right after current or as only song
-      const existingIdx = this.queue.findIndex(t => t.videoId === track.videoId);
-      if (existingIdx !== -1) {
-        this.currentIndex = existingIdx;
-      } else {
-        if (this.queue.length === 0) {
-          this.queue = [track];
-          this.currentIndex = 0;
-        } else {
-          this.queue.splice(this.currentIndex + 1, 0, track);
-          this.currentIndex = this.currentIndex + 1;
-        }
-      }
+      this.queue.splice(this.currentIndex + 1, 0, track);
+      this.currentIndex = this.currentIndex + 1;
     }
 
     this.persistQueue();
     this.notifyQueue();
     LocalStorageManager.addToHistory(track);
     playerService.playTrack(track);
+    void this.ensureUpcomingQueue();
   }
 
   public enqueueNext(track: TrackReference): void {
@@ -126,10 +122,11 @@ class PlaylistService {
       playerService.playTrack(track);
       this.persistQueue();
       this.notifyQueue();
+      void this.ensureUpcomingQueue();
     }
   }
 
-  public playNext(): void {
+  public async playNext(): Promise<void> {
     if (this.queue.length === 0) return;
 
     const status = playerService.getStatus();
@@ -146,6 +143,73 @@ class PlaylistService {
       this.playIndex(this.currentIndex + 1);
     } else if (status.repeatMode === 'all') {
       this.playIndex(0);
+    } else {
+      const settings = LocalStorageManager.getSettings();
+      if (settings.autoPlayNext && this.queue.length > 0) {
+        const current = this.getCurrentTrack();
+        if (current) {
+          const related = await this.findRelatedTrack(current);
+          if (related) {
+            this.queue.push(related);
+            this.currentIndex = this.queue.length - 1;
+            this.persistQueue();
+            this.notifyQueue();
+            LocalStorageManager.addToHistory(related);
+            playerService.playTrack(related);
+            void this.ensureUpcomingQueue();
+          }
+        }
+      }
+    }
+  }
+
+  private isFillingQueue: boolean = false;
+
+  private async ensureUpcomingQueue(): Promise<void> {
+    const settings = LocalStorageManager.getSettings();
+    if (!settings.autoPlayNext) return;
+    if (this.isFillingQueue) return;
+
+    const remaining = this.queue.length - 1 - this.currentIndex;
+    if (remaining >= 2) return;
+
+    this.isFillingQueue = true;
+    try {
+      const current = this.getCurrentTrack();
+      if (!current) return;
+
+      const history = LocalStorageManager.getHistory();
+      const nextTrack = await RecommendationEngine.getSmartNextTrack({
+        currentTrack: current,
+        currentQueue: this.queue,
+        history,
+      });
+
+      if (nextTrack) {
+        if (!this.queue.some(t => t.videoId === nextTrack.videoId)) {
+          this.queue.push(nextTrack);
+          this.persistQueue();
+          this.notifyQueue();
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to top up upcoming queue:', err);
+    } finally {
+      this.isFillingQueue = false;
+    }
+  }
+
+  private async findRelatedTrack(current: TrackReference): Promise<TrackReference | null> {
+    try {
+      const history = LocalStorageManager.getHistory();
+      return await RecommendationEngine.getSmartNextTrack({
+        currentTrack: current,
+        currentQueue: this.queue,
+        history,
+      });
+    } catch (error) {
+      console.warn('Could not find smart related track:', error);
+      return null;
     }
   }
 
@@ -174,7 +238,7 @@ class PlaylistService {
       return;
     }
 
-    this.playNext();
+    void this.playNext();
   }
 
   private persistQueue(): void {
@@ -296,4 +360,3 @@ class PlaylistService {
 }
 
 export const playlistService = new PlaylistService();
-

@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, ExternalLink } from 'lucide-react';
 import { playerService } from '../../services/playerService';
-import { PlayerStatus } from '../../models/types';
+import { TrackReference } from '../../models/types';
 
 interface EmbeddedPlayerProps {
   isOpen: boolean;
@@ -9,20 +9,22 @@ interface EmbeddedPlayerProps {
 }
 
 export const EmbeddedPlayer: React.FC<EmbeddedPlayerProps> = ({ isOpen, onClose }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = React.useState<PlayerStatus>(playerService.getStatus());
+  const webviewRef = useRef<any>(null);
+  const [currentTrack, setCurrentTrack] = useState<TrackReference | null>(
+    playerService.getStatus().currentTrack
+  );
 
   useEffect(() => {
-    // Initialize the singleton YouTube IFrame player into #youtube-iframe-target
-    playerService.initPlayer('youtube-iframe-target');
+    if (webviewRef.current) {
+      playerService.initWebview(webviewRef.current);
+    }
 
     const unsub = playerService.subscribe((s) => {
-      setStatus(s);
+      // Only re-render when the active track actually changes
+      setCurrentTrack((prev) => (prev?.videoId === s.currentTrack?.videoId ? prev : s.currentTrack));
     });
     return unsub;
   }, []);
-
-  const currentTrack = status.currentTrack;
 
   const handleOpenOnYouTube = () => {
     if (currentTrack) {
@@ -32,30 +34,29 @@ export const EmbeddedPlayer: React.FC<EmbeddedPlayerProps> = ({ isOpen, onClose 
 
   return (
     <div
-      ref={containerRef}
-      className={`fixed transition-all duration-200 ease-out overflow-hidden flex flex-col bg-[#111114] border border-white/[0.08] shadow-2xl rounded-lg ${
+      className={`fixed transition-all duration-200 ease-out overflow-hidden flex flex-col bg-[#1c1c1e] border border-white/[0.08] shadow-2xl rounded-xl ${
         isOpen
-          ? 'bottom-20 right-4 w-96 h-60 opacity-100 pointer-events-auto z-50'
+          ? 'bottom-20 right-4 w-96 h-60 opacity-100 pointer-events-auto z-[60]'
           : 'bottom-0 right-0 w-60 h-36 opacity-[0.001] pointer-events-none -z-10'
       }`}
     >
       {/* Header when open */}
       {isOpen && (
-        <div className="h-7 bg-[#16161a] px-3 flex items-center justify-between border-b border-white/[0.06] text-[11px] text-zinc-300">
-          <span className="font-semibold truncate max-w-[200px]">
+        <div className="h-7 bg-[#232323] px-3 flex items-center justify-between border-b border-white/[0.08] text-[11px] text-zinc-300">
+          <span className="font-semibold truncate max-w-[200px] text-white">
             {currentTrack ? currentTrack.title : 'YouTube Player'}
           </span>
           <div className="flex items-center gap-1">
             <button
               onClick={handleOpenOnYouTube}
-              className="p-1 hover:text-white hover:bg-white/[0.05] rounded"
+              className="p-1 text-zinc-400 hover:text-white hover:bg-white/[0.06] rounded"
               title="Mở trên YouTube"
             >
               <ExternalLink className="w-3 h-3" />
             </button>
             <button
               onClick={onClose}
-              className="p-1 hover:text-white hover:bg-white/[0.05] rounded"
+              className="p-1 text-zinc-400 hover:text-white hover:bg-white/[0.06] rounded"
               title="Thu nhỏ vào nền"
             >
               <X className="w-3 h-3" />
@@ -64,9 +65,15 @@ export const EmbeddedPlayer: React.FC<EmbeddedPlayerProps> = ({ isOpen, onClose 
         </div>
       )}
 
-      {/* The single permanent container for YouTube IFrame */}
-      <div className="w-full flex-1 bg-black relative">
-        <div id="youtube-iframe-target" className="w-full h-full" />
+      {/* Native YouTube Webview engine - plays all videos with zero embedding restrictions */}
+      <div className="w-full flex-1 bg-black relative overflow-hidden">
+        <webview
+          ref={webviewRef}
+          id="yt-player-webview"
+          src="about:blank"
+          className="w-full h-full border-0"
+          allowpopups={true}
+        />
       </div>
     </div>
   );

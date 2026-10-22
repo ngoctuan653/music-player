@@ -14,7 +14,8 @@ import {
   Video,
   ListMusic,
   MessageSquare,
-  AlertTriangle
+  AlertTriangle,
+  ExternalLink,
 } from 'lucide-react';
 import { PlayerStatus, RepeatMode } from '../../models/types';
 import { playerService } from '../../services/playerService';
@@ -103,34 +104,41 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   const currentTrack = status.currentTrack;
 
   return (
-    <footer className="h-16 bg-[#0a0a0d] border-t border-white/[0.08] px-3.5 flex items-center justify-between select-none z-40 relative text-xs">
+    <footer className="am-playerbar h-16 bg-[#161616] border-t border-white/[0.08] px-4 flex items-center justify-between select-none z-40 relative text-xs">
       {/* Alert toast if error occurs */}
       {status.error && (
-        <div className="absolute -top-9 left-1/2 -translate-x-1/2 bg-[#1c1212] text-red-300 text-[11px] font-mono px-3 py-1 rounded border border-red-800/60 flex items-center gap-1.5 shadow-lg">
-          <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+        <div className="absolute -top-9 left-1/2 -translate-x-1/2 bg-[#1c1212] text-red-300 text-[11px] font-mono px-3 py-1 rounded border border-red-800/60 flex items-center gap-2 shadow-lg z-50">
+          <AlertTriangle className="w-3.5 h-3.5 text-[#fc3c44] shrink-0" />
           <span>{status.error}</span>
+          {currentTrack && (
+            <button
+              onClick={() => window.open(`https://www.youtube.com/watch?v=${currentTrack.videoId}`, '_blank')}
+              className="ml-1 underline text-red-200 hover:text-white flex items-center gap-0.5"
+            >
+              <span>Open YouTube</span>
+              <ExternalLink className="w-2.5 h-2.5" />
+            </button>
+          )}
         </div>
       )}
 
       {/* Left: Track Information */}
-      <div className="flex items-center gap-2.5 w-[28%] min-w-[200px]">
+      <div className="flex items-center gap-3 w-[30%] min-w-0 max-w-[280px] shrink-0">
         {currentTrack ? (
           <>
-            <div className="w-10 h-10 rounded bg-[#16161a] overflow-hidden shrink-0 relative border border-white/[0.06]">
+            <div className="w-11 h-11 rounded-md bg-[#2c2c2e] overflow-hidden shrink-0 relative border border-white/[0.06] shadow-sm">
               <img
                 src={currentTrack.thumbnailUrl}
                 alt=""
                 className="w-full h-full object-cover"
               />
               {status.isBuffering && (
-                <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
-                  <div className="w-3.5 h-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                </div>
+                <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#fc3c44] animate-ping" />
               )}
             </div>
 
             <div className="overflow-hidden min-w-0 flex-1 pr-1">
-              <p className="text-xs font-medium text-zinc-100 truncate hover:text-white cursor-pointer" title={currentTrack.title}>
+              <p className="text-xs font-semibold text-white truncate hover:underline cursor-pointer" title={currentTrack.title}>
                 {currentTrack.title}
               </p>
               <p className="text-[11px] text-zinc-400 truncate mt-0.5" title={currentTrack.channelTitle}>
@@ -142,32 +150,32 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               onClick={handleToggleFavorite}
               className={`p-1.5 rounded transition-colors shrink-0 ${
                 isFavorite
-                  ? 'text-red-500'
+                  ? 'text-[#fc3c44]'
                   : 'text-zinc-500 hover:text-zinc-300'
               }`}
-              title={isFavorite ? 'Bỏ thích' : 'Yêu thích'}
+              title={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
             >
-              <Heart className={`w-3.5 h-3.5 ${isFavorite ? 'fill-red-500' : ''}`} />
+              <Heart className={`w-3.5 h-3.5 ${isFavorite ? 'fill-[#fc3c44]' : ''}`} />
             </button>
           </>
         ) : (
-          <div className="text-[11px] text-zinc-500 flex items-center gap-1.5 font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
-            <span>IDLE / SẴN SÀNG</span>
+          <div className="text-[11px] text-zinc-500 flex items-center gap-1.5 font-mono truncate">
+            <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 shrink-0" />
+            <span className="truncate">NOT PLAYING</span>
           </div>
         )}
       </div>
 
-      {/* Center: Controls & Needle Timeline */}
-      <div className="flex flex-col items-center max-w-[500px] w-[44%]">
+      {/* Center: Controls & Scrubber */}
+      <div className="flex flex-col items-center flex-1 max-w-[480px] min-w-0 px-2">
         {/* Buttons */}
-        <div className="flex items-center gap-3 mb-1">
+        <div className="flex items-center gap-4 mb-1">
           <button
             onClick={() => playerService.toggleShuffle()}
             className={`p-1 rounded transition-colors ${
-              status.isShuffled ? 'text-red-400' : 'text-zinc-500 hover:text-zinc-300'
+              status.isShuffled ? 'text-[#fc3c44]' : 'text-zinc-400 hover:text-white'
             }`}
-            title={status.isShuffled ? 'Tắt phát ngẫu nhiên' : 'Bật phát ngẫu nhiên'}
+            title={status.isShuffled ? 'Disable Shuffle' : 'Enable Shuffle'}
           >
             <Shuffle className="w-3.5 h-3.5" />
           </button>
@@ -175,8 +183,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           <button
             onClick={handlePrev}
             disabled={!currentTrack}
-            className="p-1 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Bài trước đó"
+            className="p-1 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            title="Previous track"
           >
             <SkipBack className="w-4 h-4 fill-current" />
           </button>
@@ -184,25 +192,25 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           <button
             onClick={handleTogglePlay}
             disabled={!currentTrack}
-            className={`w-7 h-7 rounded-full flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
+            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
               status.isPlaying
-                ? 'bg-red-500 text-white shadow-sm ring-1 ring-red-400'
+                ? 'bg-[#fc3c44] text-white shadow-sm ring-1 ring-[#fc3c44]/50'
                 : 'bg-white text-black hover:bg-zinc-200'
             }`}
-            title={status.isPlaying ? 'Tạm dừng' : 'Phát'}
+            title={status.isPlaying ? 'Pause' : 'Play'}
           >
             {status.isPlaying ? (
-              <Pause className="w-3 h-3 fill-current" />
+              <Pause className="w-3.5 h-3.5 fill-current" />
             ) : (
-              <Play className="w-3 h-3 fill-current translate-x-0.5" />
+              <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
             )}
           </button>
 
           <button
             onClick={handleNext}
             disabled={!currentTrack}
-            className="p-1 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Bài tiếp theo"
+            className="p-1 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            title="Next track"
           >
             <SkipForward className="w-4 h-4 fill-current" />
           </button>
@@ -210,9 +218,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           <button
             onClick={cycleRepeat}
             className={`p-1 rounded transition-colors ${
-              status.repeatMode !== 'off' ? 'text-red-400' : 'text-zinc-500 hover:text-zinc-300'
+              status.repeatMode !== 'off' ? 'text-[#fc3c44]' : 'text-zinc-400 hover:text-white'
             }`}
-            title={`Lặp lại: ${status.repeatMode}`}
+            title={`Repeat: ${status.repeatMode}`}
           >
             {status.repeatMode === 'one' ? (
               <Repeat1 className="w-3.5 h-3.5" />
@@ -223,12 +231,12 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         </div>
 
         {/* Needle Scrubber */}
-        <div className="w-full flex items-center gap-2 text-[10px] font-mono text-zinc-500">
-          <span className="w-8 text-right font-medium text-zinc-400">{formatTime(displayTime)}</span>
-          <div className="relative flex-1 flex items-center group h-2 cursor-pointer">
-            <div className="w-full h-[3px] bg-white/[0.08] rounded-full overflow-hidden">
+        <div className="w-full flex items-center gap-2.5 text-[10px] font-mono text-zinc-400">
+          <span className="w-8 text-right font-medium text-zinc-400 shrink-0">{formatTime(displayTime)}</span>
+          <div className="relative flex-1 flex items-center group h-2 cursor-pointer min-w-0">
+            <div className="w-full h-[3px] bg-white/[0.12] rounded-full overflow-hidden">
               <div
-                className="h-full bg-red-500 transition-all duration-150"
+                className="h-full bg-[#fc3c44] transition-all duration-150"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
@@ -247,20 +255,20 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
             />
           </div>
-          <span className="w-8 font-medium text-zinc-400">{formatTime(status.duration)}</span>
+          <span className="w-8 font-medium text-zinc-400 shrink-0">{formatTime(status.duration)}</span>
         </div>
       </div>
 
       {/* Right: Audio Output Bus & Controls */}
-      <div className="flex items-center justify-end gap-2.5 w-[28%] min-w-[200px]">
+      <div className="audio-output-dock flex items-center justify-end gap-1.5 w-[30%] min-w-0 max-w-[320px] shrink-0">
         {/* Audio Output Device Selector */}
         <AudioOutputSelector />
 
         {/* View Queue button */}
         <button
           onClick={onOpenQueue}
-          className="p-1.5 text-zinc-400 hover:text-white rounded hover:bg-white/[0.04] transition-colors"
-          title="Xem hàng đợi phát"
+          className="p-1.5 text-zinc-400 hover:text-white rounded hover:bg-white/[0.04] transition-colors shrink-0"
+          title="Playback Queue"
         >
           <ListMusic className="w-3.5 h-3.5" />
         </button>
@@ -269,12 +277,12 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         <button
           onClick={onToggleComments}
           disabled={!currentTrack}
-          className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+          className={`p-1.5 rounded transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
             isCommentsOpen
-              ? 'text-red-400 bg-red-500/10'
+              ? 'text-[#fc3c44] bg-[#fc3c44]/15'
               : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
           }`}
-          title={isCommentsOpen ? 'Ẩn bình luận' : 'Xem bình luận của video'}
+          title={isCommentsOpen ? 'Hide comments' : 'Show comments'}
         >
           <MessageSquare className="w-3.5 h-3.5" />
         </button>
@@ -282,25 +290,25 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         {/* Mini video toggle */}
         <button
           onClick={onToggleMiniVideo}
-          className={`p-1.5 rounded transition-colors ${
+          className={`p-1.5 rounded transition-colors shrink-0 ${
             isMiniVideoOpen
-              ? 'text-red-400 bg-red-500/10'
+              ? 'text-[#fc3c44] bg-[#fc3c44]/15'
               : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
           }`}
-          title={isMiniVideoOpen ? 'Ẩn màn hình video' : 'Xem video'}
+          title={isMiniVideoOpen ? 'Hide video' : 'Show video'}
         >
           <Video className="w-3.5 h-3.5" />
         </button>
 
         {/* Compact Volume */}
-        <div className="flex items-center gap-1.5 pl-1 border-l border-white/[0.06]">
+        <div className="hidden sm:flex items-center gap-1.5 pl-1.5 border-l border-white/[0.08] shrink-0">
           <button
             onClick={() => playerService.toggleMute()}
             className="text-zinc-400 hover:text-white transition-colors p-0.5"
-            title={status.isMuted ? 'Bật âm' : 'Tắt âm'}
+            title={status.isMuted ? 'Unmute' : 'Mute'}
           >
             {status.isMuted || status.volume === 0 ? (
-              <VolumeX className="w-3.5 h-3.5 text-red-400" />
+              <VolumeX className="w-3.5 h-3.5 text-[#fc3c44]" />
             ) : status.volume < 50 ? (
               <Volume1 className="w-3.5 h-3.5" />
             ) : (
@@ -313,7 +321,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             max="100"
             value={status.isMuted ? 0 : status.volume}
             onChange={handleVolumeChange}
-            className="w-16 h-1 bg-white/[0.1] accent-red-500 rounded-full cursor-pointer"
+            className="w-16 h-1 bg-white/[0.15] accent-[#fc3c44] rounded-full cursor-pointer"
           />
         </div>
       </div>

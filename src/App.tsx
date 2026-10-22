@@ -27,6 +27,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     LocalStorageManager.init();
+    document.documentElement.dataset.theme = 'dark';
 
     // Subscribe to current track
     const unsubPlayer = playerService.subscribe((s) => {
@@ -72,7 +73,7 @@ export const App: React.FC = () => {
   };
 
   const handleCreatePlaylistPrompt = () => {
-    const name = prompt('Nhập tên danh sách phát mới:');
+    const name = prompt('Enter new playlist name:');
     if (name?.trim()) {
       const pl = playlistService.createPlaylist(name.trim());
       setSelectedPlaylistId(pl.id);
@@ -81,12 +82,12 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#09090b] text-[#f4f4f5] select-none overflow-hidden font-sans">
+    <div className="app-root flex flex-col h-screen w-screen bg-[#131313] text-[#f4f4f5] select-none overflow-hidden font-sans">
       {/* Frameless Top Window Bar */}
       <TitleBar />
 
       {/* Main Body: Sidebar + Dynamic Page Content */}
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="app-shell flex flex-1 overflow-hidden relative">
         <Sidebar
           activePage={activePage}
           onNavigate={(page) => {
@@ -97,7 +98,7 @@ export const App: React.FC = () => {
           onCreatePlaylistClick={handleCreatePlaylistPrompt}
         />
 
-        <main className="flex-1 overflow-y-auto bg-[#0c0c0e] relative">
+        <main className="page flex-1 overflow-y-auto relative bg-[#131313]">
           {activePage === 'home' && (
             <HomePage
               onPlayTrack={handlePlayTrack}
@@ -155,7 +156,7 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Bottom Sticky Player Bar (Signal Dock) */}
+      {/* Bottom Sticky Player Bar (Apple Music Dock) */}
       <PlayerBar
         isMiniVideoOpen={isMiniVideoOpen}
         onToggleMiniVideo={() => setIsMiniVideoOpen(!isMiniVideoOpen)}

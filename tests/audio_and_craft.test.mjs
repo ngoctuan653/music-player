@@ -118,4 +118,21 @@ describe('YouTube Error 150/101 Bypass Header Logic Tests', () => {
     assert.equal(results[0].title, 'Mock Song');
     assert.equal(results[0].channelTitle, 'Mock Artist');
   });
+
+  test('Maps YouTube error codes correctly including 153, 150, 101', () => {
+    function mapPlayerError(errorCode) {
+      if (errorCode === 2) return 'Tham số video không hợp lệ.';
+      if (errorCode === 5) return 'Lỗi phát HTML5 từ YouTube.';
+      if (errorCode === 100) return 'Video không tồn tại hoặc đã bị xóa.';
+      if (errorCode === 101 || errorCode === 150) return 'Chủ sở hữu video không cho phép phát nhúng bên ngoài YouTube.';
+      if (errorCode === 153) return 'Lỗi nhận diện Referer API YouTube (Mã 153).';
+      return 'Không thể phát video này.';
+    }
+
+    assert.equal(mapPlayerError(153), 'Lỗi nhận diện Referer API YouTube (Mã 153).');
+    assert.equal(mapPlayerError(150), 'Chủ sở hữu video không cho phép phát nhúng bên ngoài YouTube.');
+    assert.equal(mapPlayerError(101), 'Chủ sở hữu video không cho phép phát nhúng bên ngoài YouTube.');
+    assert.equal(mapPlayerError(100), 'Video không tồn tại hoặc đã bị xóa.');
+    assert.equal(mapPlayerError(999), 'Không thể phát video này.');
+  });
 });

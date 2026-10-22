@@ -32,14 +32,14 @@ export const AudioOutputSelector: React.FC = () => {
   }, [isOpen]);
 
   const activeDevice = devices.find(d => d.deviceId === activeDeviceId);
-  const activeLabel = activeDevice?.label || (activeDeviceId === 'default' ? 'Loa mặc định' : 'Thiết bị xuất');
+  const activeLabel = activeDevice?.label || (activeDeviceId === 'default' ? 'Default Speaker' : 'Output Device');
 
   // Shorten device label for display in small dock
   const displayLabel = activeLabel
     .replace(/\s*\(Default\)/gi, '')
     .replace(/Audio Device/gi, '')
     .trim()
-    .slice(0, 18)
+    .slice(0, 16)
     .trim();
 
   const isHeadphone = activeLabel.toLowerCase().includes('headphone') || 
@@ -53,23 +53,23 @@ export const AudioOutputSelector: React.FC = () => {
   };
 
   return (
-    <div ref={containerRef} className="relative select-none text-xs font-mono">
+    <div ref={containerRef} className="audio-output-selector relative select-none text-xs font-mono shrink-0">
       {/* Trigger Button (Bus Pill) */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-all border ${
+        className={`audio-output-trigger flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-all border ${
           isOpen
-            ? 'bg-[#1e1e24] text-white border-zinc-600 shadow-sm'
-            : 'bg-[#131316] hover:bg-[#1a1a20] text-zinc-400 hover:text-zinc-200 border-white/[0.06]'
+            ? 'bg-[#2c2c2e] text-white border-zinc-500 shadow-sm'
+            : 'bg-[#232323] hover:bg-[#2c2c2e] text-zinc-300 hover:text-white border-white/[0.08]'
         }`}
-        title={`Đang xuất âm thanh qua: ${activeLabel} (Click để đổi)`}
+        title={`Audio Output: ${activeLabel} (Click to switch)`}
       >
         {isHeadphone ? (
           <Headphones className="w-3.5 h-3.5 text-zinc-300 shrink-0" />
         ) : (
           <Speaker className="w-3.5 h-3.5 text-zinc-300 shrink-0" />
         )}
-        <span className="truncate max-w-[110px] font-medium tracking-tight">
+        <span className="audio-output-label truncate max-w-[95px] font-medium tracking-tight">
           {displayLabel}
         </span>
         <ChevronUp className={`w-3 h-3 text-zinc-500 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
@@ -77,16 +77,16 @@ export const AudioOutputSelector: React.FC = () => {
 
       {/* Popover Menu */}
       {isOpen && (
-        <div className="absolute bottom-full mb-2 right-0 w-64 bg-[#111114] border border-white/[0.08] rounded-lg shadow-2xl p-1 z-50 overflow-hidden backdrop-blur-md">
-          <div className="px-2.5 py-1.5 border-b border-white/[0.06] flex items-center justify-between text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">
-            <span>Thiết bị xuất âm (Bus)</span>
-            <span className="text-[9px] text-zinc-600">setSinkId</span>
+        <div className="audio-output-popover absolute bottom-full mb-2 right-0 w-[min(16rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] bg-[#1c1c1e] border border-white/[0.08] rounded-xl shadow-2xl p-1.5 z-50 overflow-hidden">
+          <div className="px-2.5 py-1.5 border-b border-white/[0.06] flex items-center justify-between text-[10px] uppercase tracking-wider text-zinc-400 font-semibold">
+            <span>Audio Output</span>
+            <span className="text-[9px] text-zinc-500 font-mono">Direct Bus</span>
           </div>
 
           <div className="max-h-52 overflow-y-auto py-1 space-y-0.5">
             {devices.length === 0 ? (
               <div className="px-3 py-2 text-zinc-500 text-[11px] italic">
-                Chỉ có Loa mặc định hệ thống
+                System Default Output
               </div>
             ) : (
               devices.map((device, idx) => {
@@ -94,28 +94,28 @@ export const AudioOutputSelector: React.FC = () => {
                 const isDeviceHeadphones = device.label.toLowerCase().includes('headphone') ||
                                            device.label.toLowerCase().includes('tai nghe') ||
                                            device.label.toLowerCase().includes('airpods');
-                const cleanLabel = device.label || `Thiết bị phát ${idx + 1}`;
+                const cleanLabel = device.label || `Output Device ${idx + 1}`;
 
                 return (
                   <button
                     key={device.deviceId || idx}
                     onClick={() => handleSelectDevice(device.deviceId)}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-left text-[11px] transition-colors ${
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-[11px] transition-colors ${
                       isSelected
-                        ? 'bg-red-500/10 text-red-400 font-medium'
-                        : 'text-zinc-300 hover:text-white hover:bg-white/[0.04]'
+                        ? 'bg-[#fc3c44]/15 text-[#fc3c44] font-medium'
+                        : 'text-zinc-300 hover:text-white hover:bg-white/[0.06]'
                     }`}
                   >
                     <div className="flex items-center gap-2 truncate pr-2">
                       {isDeviceHeadphones ? (
-                        <Headphones className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                        <Headphones className="w-3.5 h-3.5 shrink-0 opacity-80" />
                       ) : (
-                        <Speaker className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                        <Speaker className="w-3.5 h-3.5 shrink-0 opacity-80" />
                       )}
                       <span className="truncate">{cleanLabel}</span>
                     </div>
                     {isSelected && (
-                      <Check className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <Check className="w-3.5 h-3.5 text-[#fc3c44] shrink-0" />
                     )}
                   </button>
                 );

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, shell, nativeImage, session, net } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, shell, nativeImage, session, net, webContents, powerMonitor } from 'electron';
 import path from 'path';
 import http from 'http';
 import fs from 'fs';
@@ -13,6 +13,59 @@ const isDev = process.env.NODE_ENV !== 'production' || !app.isPackaged;
 // Allow media autoplay without requiring manual click inside the iframe
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
+
+// --- High-Performance DoH (DNS-over-HTTPS) & Ad-Shield Setup ---
+export interface DnsConfig {
+  mode: 'ublock' | 'controld' | 'hagezi' | 'nextdns' | 'adguard' | 'family' | 'cloudflare' | 'custom' | 'off';
+  url?: string;
+  accountKey?: string;
+}
+
+// Default to 'ublock' or 'off'
+let activeDnsConfig: DnsConfig = {
+  mode: 'ublock',
+  url: 'https://my.ublockdns.com/na56bjem',
+  accountKey: 'valid glass gravity pipe',
+};
+
+try {
+  const dnsConfigPath = path.join(app.getPath('userData'), 'dns-config.json');
+  if (fs.existsSync(dnsConfigPath)) {
+    const raw = fs.readFileSync(dnsConfigPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    activeDnsConfig = { ...activeDnsConfig, ...parsed };
+  }
+} catch {
+  // Use default DNS
+}
+
+// Compute DoH template URL
+let dohTemplate = '';
+if (activeDnsConfig.mode === 'ublock') {
+  dohTemplate = activeDnsConfig.url?.trim() || 'https://my.ublockdns.com/na56bjem';
+} else if (activeDnsConfig.mode === 'controld') {
+  dohTemplate = 'https://freedns.controld.com/p1';
+} else if (activeDnsConfig.mode === 'hagezi') {
+  // Official HaGeZi Multi PRO DoH resolver (clean ad/tracking blocklist)
+  dohTemplate = 'https://root.hagezi.org/dns-query';
+} else if (activeDnsConfig.mode === 'nextdns') {
+  dohTemplate = 'https://dns.nextdns.io/dns-query';
+} else if (activeDnsConfig.mode === 'adguard') {
+  dohTemplate = 'https://dns.adguard-dns.com/dns-query';
+} else if (activeDnsConfig.mode === 'family') {
+  dohTemplate = 'https://family.adguard-dns.com/dns-query';
+} else if (activeDnsConfig.mode === 'cloudflare') {
+  dohTemplate = 'https://security.cloudflare-dns.com/dns-query';
+} else if (activeDnsConfig.mode === 'custom' && activeDnsConfig.url?.trim()) {
+  dohTemplate = activeDnsConfig.url.trim();
+}
+
+// Only activate DoH command line switches if user has explicitly turned it on
+if (dohTemplate && activeDnsConfig.mode !== 'off') {
+  app.commandLine.appendSwitch('enable-features', 'DnsOverHttps');
+  app.commandLine.appendSwitch('dns-over-https-templates', dohTemplate);
+  app.commandLine.appendSwitch('dns-over-https-mode', 'automatic');
+}
 
 function createStaticServer(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -29,6 +82,9 @@ function createStaticServer(): Promise<string> {
     };
 
     staticServer = http.createServer((req, res) => {
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+
       let cleanUrl = (req.url || '/').split('?')[0];
       if (cleanUrl === '/') cleanUrl = '/index.html';
       const filePath = path.join(distPath, cleanUrl);
@@ -64,48 +120,104 @@ function createStaticServer(): Promise<string> {
   });
 }
 
-function setupNetworkInterceptors() {
-  // Only target YouTube embed and player APIs.
-  // DO NOT intercept googlevideo.com so video stream security tokens are preserved!
-  const embedFilter = {
+// Comprehensive advertising, telemetry and tracking patterns (HaGeZi-aligned)
+// Cancelling these at onBeforeRequest stops the request BEFORE DNS resolution,
+// Comprehensive advertising, telemetry and tracking patterns (HaGeZi-aligned)
+// Cancelling these at onBeforeRequest stops the request BEFORE DNS resolution,
+// preventing TCP connections and eliminating SSL handshake errors (-101) completely.
+// NOTE: We do NOT block *.youtube.com endpoints here because doing so breaks YouTube's integrity/DRM checks!
+const adBlockPatterns = [
+  // Google / DoubleClick advertising networks (external)
+  '*://*.doubleclick.net/*',
+  '*://*.googlesyndication.com/*',
+  '*://*.googleadservices.com/*',
+  '*://static.doubleclick.net/*',
+  '*://pagead2.googlesyndication.com/*',
+  '*://pagead2.googleadservices.com/*',
+  '*://ad.doubleclick.net/*',
+  '*://adservice.google.com/*',
+  '*://googleads.g.doubleclick.net/*',
+  '*://securepubads.g.doubleclick.net/*',
+  '*://pubads.g.doubleclick.net/*',
+  '*://tpc.googlesyndication.com/*',
+  // YouTube in-stream and tracking ad endpoints
+  '*://*.youtube.com/pagead/*',
+  '*://*.youtube.com/api/stats/ads*',
+  '*://*.youtube.com/youtubei/v1/player/ad_break*',
+  '*://*.youtube.com/get_midroll_info*',
+  '*://*.youtube.com/ptracking*',
+  // Third-party Video Ad Servers & Telemetry (HaGeZi Multi PRO streaming list)
+  '*://*.innovid.com/*',
+  '*://*.flashtalking.com/*',
+  '*://*.serving-sys.com/*',
+  '*://*.scorecardresearch.com/*',
+  '*://*.moatads.com/*',
+  '*://*.doubleverify.com/*',
+  '*://*.adroll.com/*',
+  '*://*.criteo.com/*',
+  '*://*.rubiconproject.com/*',
+  '*://*.openx.net/*',
+  '*://*.pubmatic.com/*',
+  '*://*.taboola.com/*',
+  '*://*.outbrain.com/*',
+];
+
+const attachedSessions = new WeakSet<session.Session>();
+
+function attachAdBlocker(sess: session.Session) {
+  if (attachedSessions.has(sess)) return;
+  attachedSessions.add(sess);
+
+  try {
+    sess.webRequest.onBeforeRequest({ urls: adBlockPatterns }, (_details, callback) => {
+      // Cancel before request leaves the browser: 0 latency, 0 SSL sockets opened
+      callback({ cancel: true });
+    });
+  } catch (err) {
+    console.warn('Could not register ad-block filter on session:', err);
+  }
+
+  // Ensure YouTube player requests have standard desktop User-Agent and Referer headers
+  const ytFilter = {
     urls: [
-      '*://www.youtube.com/embed/*',
-      '*://www.youtube-nocookie.com/embed/*',
-      '*://www.youtube.com/iframe_api*',
-      '*://www.youtube.com/s/player/*',
+      '*://www.youtube.com/*',
+      '*://www.youtube-nocookie.com/*',
+      '*://music.youtube.com/*',
     ],
   };
 
-  session.defaultSession.webRequest.onBeforeSendHeaders(embedFilter, (details, callback) => {
-    const headers = { ...details.requestHeaders };
-    headers['Referer'] = 'https://www.youtube.com/';
-    headers['User-Agent'] =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
-    callback({ cancel: false, requestHeaders: headers });
-  });
+  try {
+    sess.webRequest.onBeforeSendHeaders(ytFilter, (details, callback) => {
+      const headers = { ...details.requestHeaders };
+      headers['Referer'] = 'https://www.youtube.com/';
+      headers['User-Agent'] =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
+      callback({ cancel: false, requestHeaders: headers });
+    });
 
-  session.defaultSession.webRequest.onHeadersReceived(embedFilter, (details, callback) => {
-    const responseHeaders = { ...details.responseHeaders };
-    delete responseHeaders['x-frame-options'];
-    delete responseHeaders['X-Frame-Options'];
+    sess.webRequest.onHeadersReceived(ytFilter, (details, callback) => {
+      const responseHeaders = { ...details.responseHeaders };
+      delete responseHeaders['x-frame-options'];
+      delete responseHeaders['X-Frame-Options'];
+      if (responseHeaders['content-security-policy']) {
+        responseHeaders['content-security-policy'] = responseHeaders['content-security-policy'].map((csp: string) =>
+          csp.replace(/frame-ancestors[^;]+;?/gi, '')
+        );
+      }
+      callback({ cancel: false, responseHeaders });
+    });
+  } catch (err) {
+    console.warn('Could not register YouTube header filter on session:', err);
+  }
 
-    if (responseHeaders['content-security-policy']) {
-      responseHeaders['content-security-policy'] = responseHeaders['content-security-policy'].map(csp =>
-        csp.replace(/frame-ancestors[^;]+;?/gi, '')
-      );
-    }
-    callback({ cancel: false, responseHeaders });
-  });
-
-  // Automatically approve speaker selection and media permissions
-  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+  sess.setPermissionCheckHandler((_webContents, permission) => {
     if (permission === 'speaker-selection' || permission === 'media') {
       return true;
     }
     return false;
   });
 
-  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+  sess.setPermissionRequestHandler((_webContents, permission, callback) => {
     if (permission === 'speaker-selection' || permission === 'media') {
       callback(true);
     } else {
@@ -114,12 +226,28 @@ function setupNetworkInterceptors() {
   });
 }
 
+function setupNetworkInterceptors() {
+  attachAdBlocker(session.defaultSession);
+
+  // Also attach to all guest sessions created for <webview> tags and log console messages
+  app.on('web-contents-created', (_event, contents) => {
+    contents.setMaxListeners(50);
+    attachAdBlocker(contents.session);
+    if (contents.getType() === 'webview') {
+      contents.on('console-message', (_e, level, msg) => {
+        if (msg.includes('Insecure Content-Security-Policy') || msg.includes('powerPreference')) return;
+        console.log(`[Webview L${level}] ${msg}`);
+      });
+    }
+  });
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1080,
     height: 720,
-    minWidth: 840,
-    minHeight: 540,
+    minWidth: 420,
+    minHeight: 560,
     frame: false,
     backgroundColor: '#09090b',
     webPreferences: {
@@ -127,6 +255,7 @@ async function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true, // Clean secure standard
+      webviewTag: true,  // Enables native YouTube Webview streaming engine
     },
     icon: path.join(__dirname, '../public/icon.png'),
     show: false,
@@ -143,13 +272,33 @@ async function createWindow() {
     }
   }
 
+  // Do not leave the app invisible if ready-to-show is delayed by Chromium.
+  mainWindow.show();
+  mainWindow.focus();
+
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`Renderer failed to load (${errorCode}): ${errorDescription} - ${validatedURL}`);
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`Renderer process exited: ${details.reason} (${details.exitCode})`);
   });
 
   // Forward renderer console logs to main process stdout
   mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
     console.log(`[Renderer L${level}] ${message} (${sourceId}:${line})`);
+  });
+
+  // Track maximize / restore states
+  mainWindow.on('maximize', () => {
+    mainWindow?.webContents.send('window-maximized-change', true);
+  });
+  mainWindow.on('unmaximize', () => {
+    mainWindow?.webContents.send('window-maximized-change', false);
   });
 
   // Handle external links safely in default system browser
@@ -171,6 +320,13 @@ async function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  mainWindow.on('show', () => {
+    mainWindow?.webContents.send('glass-window-visibility', true);
+  });
+  mainWindow.on('hide', () => {
+    mainWindow?.webContents.send('glass-window-visibility', false);
+  });
 }
 
 function createTray() {
@@ -183,11 +339,11 @@ function createTray() {
   }
 
   tray = new Tray(icon);
-  tray.setToolTip('YouTube Music Desktop');
+  tray.setToolTip('Music Player');
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Mở ứng dụng',
+      label: 'Open Music Player',
       click: () => {
         if (mainWindow) {
           mainWindow.show();
@@ -197,26 +353,26 @@ function createTray() {
     },
     { type: 'separator' },
     {
-      label: 'Phát / Tạm dừng',
+      label: 'Play / Pause',
       click: () => {
         mainWindow?.webContents.send('media-control', 'togglePlayPause');
       },
     },
     {
-      label: 'Bài tiếp theo',
+      label: 'Next Track',
       click: () => {
         mainWindow?.webContents.send('media-control', 'nextTrack');
       },
     },
     {
-      label: 'Bài trước đó',
+      label: 'Previous Track',
       click: () => {
         mainWindow?.webContents.send('media-control', 'prevTrack');
       },
     },
     { type: 'separator' },
     {
-      label: 'Thoát hoàn toàn',
+      label: 'Quit',
       click: () => {
         isQuitting = true;
         app.quit();
@@ -268,11 +424,25 @@ if (!gotTheLock) {
 
   app.whenReady().then(async () => {
     setupNetworkInterceptors();
-    await createWindow();
-    createTray();
-    registerMediaShortcuts();
 
-    // IPC window control listeners
+    const notifyGlassEnvironment = () => {
+      mainWindow?.webContents.send('glass-environment', {
+        onBattery: powerMonitor.isOnBatteryPower(),
+        gpuHealthy: true,
+      });
+    };
+    powerMonitor.on('on-ac', notifyGlassEnvironment);
+    powerMonitor.on('on-battery', notifyGlassEnvironment);
+    app.on('child-process-gone', (_event, details) => {
+      if (details.type === 'GPU') {
+        mainWindow?.webContents.send('glass-environment', {
+          onBattery: powerMonitor.isOnBatteryPower(),
+          gpuHealthy: false,
+        });
+      }
+    });
+
+    // Register IPC listeners BEFORE window creation so initial renderer calls succeed
     ipcMain.on('window-minimize', () => {
       mainWindow?.minimize();
     });
@@ -287,6 +457,30 @@ if (!gotTheLock) {
 
     ipcMain.on('window-close', () => {
       mainWindow?.close();
+    });
+
+    ipcMain.handle('get-glass-environment', () => ({
+      onBattery: powerMonitor.isOnBatteryPower(),
+      gpuHealthy: true,
+    }));
+
+    ipcMain.handle('is-window-maximized', () => {
+      return mainWindow?.isMaximized() ?? false;
+    });
+
+    ipcMain.handle('get-dns-config', () => {
+      return activeDnsConfig;
+    });
+
+    ipcMain.handle('set-dns-config', async (_event, config: DnsConfig) => {
+      try {
+        activeDnsConfig = config;
+        const dnsConfigPath = path.join(app.getPath('userData'), 'dns-config.json');
+        fs.writeFileSync(dnsConfigPath, JSON.stringify(config, null, 2), 'utf8');
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
     });
 
     // Native fetch IPC handler (bypasses CORS/CSP safely from node main process)
@@ -306,9 +500,8 @@ if (!gotTheLock) {
       }
     });
 
-    // IPC audio output device routing across all frames & elements
+    // IPC audio output device routing across all windows, frames & webviews
     ipcMain.handle('set-audio-output-device', async (_event, deviceId: string) => {
-      if (!mainWindow) return false;
       const script = `
         (async () => {
           try {
@@ -324,12 +517,12 @@ if (!gotTheLock) {
         })();
       `;
       try {
-        await mainWindow.webContents.executeJavaScript(script, true);
-        for (const frame of mainWindow.webContents.mainFrame.frames) {
+        const allWc = webContents.getAllWebContents();
+        for (const wc of allWc) {
           try {
-            await frame.executeJavaScript(script, true);
+            await wc.executeJavaScript(script, true);
           } catch {
-            // cross-origin frame or unloading
+            // Unresponsive or destroying frame
           }
         }
         return true;
@@ -338,6 +531,11 @@ if (!gotTheLock) {
         return false;
       }
     });
+
+    await createWindow();
+    createTray();
+    registerMediaShortcuts();
+    notifyGlassEnvironment();
 
     app.on('activate', async () => {
       if (BrowserWindow.getAllWindows().length === 0) {

@@ -29,5 +29,7 @@ Thumbs.db
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
 
+# Local archives & scratch
+vaso-main/
+scratch/

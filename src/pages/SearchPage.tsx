@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search as SearchIcon, Play, Plus, FolderPlus, X, AlertCircle } from 'lucide-react';
+import { Search as SearchIcon, Play, Plus, FolderPlus, X, AlertCircle, Volume2 } from 'lucide-react';
 import { SearchResultItem, TrackReference } from '../models/types';
 import { YouTubeSearchService } from '../services/youtubeSearch';
 import { playlistService } from '../services/playlistService';
+import { playerService } from '../services/playerService';
 import { LocalStorageManager } from '../storage/localStore';
 
 interface SearchPageProps {
-  onPlayTrack: (track: TrackReference) => void;
+  onPlayTrack: (track: TrackReference, sourceList?: TrackReference[]) => void;
   onOpenAddToPlaylist: (track: TrackReference) => void;
   initialQuery?: string;
   onNavigateToSettings?: () => void;
@@ -21,9 +22,17 @@ export const SearchPage: React.FC<SearchPageProps> = ({
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
   const debounceTimerRef = useRef<any>(null);
 
   const apiKey = LocalStorageManager.getSettings().apiKey;
+
+  useEffect(() => {
+    const unsub = playerService.subscribe((s) => {
+      setCurrentPlayingId(s.currentTrack?.videoId || null);
+    });
+    return unsub;
+  }, []);
 
   const performSearch = async (q: string) => {
     setIsLoading(true);
@@ -35,11 +44,17 @@ export const SearchPage: React.FC<SearchPageProps> = ({
         setErrorMsg(res.error);
       }
     } catch {
-      setErrorMsg('Đã có lỗi xảy ra trong quá trình tìm kiếm.');
+      setErrorMsg('An error occurred during search.');
     } finally {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (initialQuery && initialQuery !== query) {
+      setQuery(initialQuery);
+    }
+  }, [initialQuery]);
 
   useEffect(() => {
     if (debounceTimerRef.current) {
@@ -78,126 +93,137 @@ export const SearchPage: React.FC<SearchPageProps> = ({
     addedAt: Date.now(),
   });
 
+  const searchTrackRefs = results.map(toTrackRef);
+
   return (
-    <div className="p-5 max-w-4xl mx-auto space-y-4 select-none text-xs">
-      {/* Search Bar (Command Line Aesthetic) */}
-      <div className="relative">
-        <SearchIcon className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+    <div className="p-6 max-w-6xl mx-auto space-y-5 select-none font-sans">
+      {/* Search Bar (Spotlight Style) */}
+      <div className="bg-[#1c1c1e] border border-white/[0.08] relative rounded-xl p-1.5 shadow-sm">
+        <SearchIcon className="w-4 h-4 text-zinc-400 absolute left-4 top-1/2 -translate-y-1/2" />
         <input
           type="text"
           autoFocus
-          placeholder="Tìm bài hát, nghệ sĩ hoặc dán trực tiếp link..."
+          placeholder="Search songs, artists, albums, or paste YouTube link..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="w-full bg-[#111114] border border-white/[0.08] rounded pl-9 pr-8 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-red-500 font-mono transition-colors"
+          className="w-full bg-[#232323] border border-white/[0.08] rounded-lg pl-11 pr-9 py-2.5 text-sm text-zinc-100 placeholder-zinc-400 focus:outline-none focus:border-[#fc3c44] transition-colors"
         />
         {query && (
           <button
             onClick={() => setQuery('')}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-zinc-500 hover:text-white"
+            className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-white"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-4 h-4" />
           </button>
         )}
       </div>
 
       {/* Error notification banner */}
       {errorMsg && (
-        <div className="bg-red-950/30 border border-red-900/40 rounded p-2.5 flex items-center gap-2 text-[11px] text-red-300 font-mono">
-          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-400" />
+        <div className="bg-red-950/30 border border-red-900/40 rounded-lg p-3 flex items-center gap-2.5 text-xs text-red-300 font-mono">
+          <AlertCircle className="w-4 h-4 shrink-0 text-[#fc3c44]" />
           <span>{errorMsg}</span>
         </div>
       )}
 
       {/* Results Header */}
-      <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 border-b border-white/[0.05] pb-1">
-        <span>KẾT QUẢ ({results.length})</span>
+      <div className="flex items-center justify-between text-xs font-mono text-zinc-400 border-b border-white/[0.08] pb-2">
+        <span className="uppercase tracking-wider font-semibold">SEARCH RESULTS ({results.length})</span>
         {isLoading && (
-          <span className="flex items-center gap-1.5 text-red-400">
-            <span className="w-2 h-2 border border-red-400 border-t-transparent rounded-full animate-spin" />
-            ĐANG TÌM...
+          <span className="flex items-center gap-2 text-[#fc3c44] text-xs">
+            <span className="w-2.5 h-2.5 border-2 border-[#fc3c44] border-t-transparent rounded-full animate-spin" />
+            SEARCHING...
           </span>
         )}
       </div>
 
       {/* Results Table */}
       {results.length === 0 && !isLoading ? (
-        <div className="py-16 text-center text-zinc-600 font-mono text-xs">
-          Không tìm thấy bài hát phù hợp.
+        <div className="py-24 text-center text-zinc-500 font-mono text-sm">
+          No tracks found. Try searching for an artist or song title.
         </div>
       ) : (
-        <div className="divide-y divide-white/[0.03] border border-white/[0.05] rounded-lg bg-[#0e0e11] overflow-hidden">
+        <div className="bg-[#1c1c1e] border border-white/[0.08] divide-y divide-white/[0.06] rounded-xl overflow-hidden">
           {results.map((item, idx) => {
             const track = toTrackRef(item);
+            const isPlaying = track.videoId === currentPlayingId;
             return (
               <div
                 key={item.videoId}
-                onClick={() => onPlayTrack(track)}
-                className="group flex items-center justify-between px-3 py-2 hover:bg-white/[0.03] transition-colors cursor-pointer"
+                onClick={() => onPlayTrack(track, searchTrackRefs)}
+                className={`group flex items-center justify-between px-4 py-2.5 hover:bg-white/[0.06] transition-colors cursor-pointer ${
+                  isPlaying ? 'bg-white/[0.04]' : ''
+                }`}
               >
-                <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-3">
-                  <span className="w-4 text-center font-mono text-[10px] text-zinc-600 group-hover:hidden">
-                    {idx + 1}
-                  </span>
-                  <Play className="w-3.5 h-3.5 text-zinc-200 fill-current hidden group-hover:block shrink-0" />
+                <div className="flex items-center gap-3 min-w-0 flex-1 pr-3">
+                  <div className="w-5 text-center font-mono text-xs shrink-0">
+                    {isPlaying ? (
+                      <Volume2 className="w-4 h-4 text-[#fc3c44] animate-pulse mx-auto" />
+                    ) : (
+                      <span className="text-zinc-500 group-hover:hidden">{idx + 1}</span>
+                    )}
+                    {!isPlaying && (
+                      <Play className="w-3.5 h-3.5 text-zinc-300 fill-current hidden group-hover:block mx-auto" />
+                    )}
+                  </div>
 
-                  <div className="relative w-11 h-7 rounded overflow-hidden shrink-0 bg-zinc-900 border border-white/[0.04]">
+                  <div className="relative w-12 h-12 rounded-md overflow-hidden shrink-0 bg-zinc-900 border border-white/[0.06]">
                     <img
                       src={item.thumbnailUrl}
                       alt=""
                       className="w-full h-full object-cover"
                     />
                     {item.duration && (
-                      <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-[8px] font-mono text-zinc-300 px-0.5 rounded leading-none">
+                      <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-[8px] font-mono text-zinc-300 px-1 rounded leading-none">
                         {item.duration}
                       </span>
                     )}
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs text-zinc-200 truncate group-hover:text-white" title={item.title}>
+                    <p className={`text-sm font-medium truncate ${isPlaying ? 'text-[#fc3c44]' : 'text-zinc-200 group-hover:text-white'}`} title={item.title}>
                       {item.title}
                     </p>
-                    <div className="flex items-center gap-2 text-[10px] text-zinc-500 mt-0.5">
+                    <div className="flex items-center gap-2 text-xs text-zinc-400 mt-0.5">
                       <span className="truncate">{item.channelTitle}</span>
                       {item.duration && (
-                        <span className="font-mono text-zinc-600 shrink-0">• {item.duration}</span>
+                        <span className="font-mono text-zinc-500 shrink-0">• {item.duration}</span>
                       )}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       playlistService.enqueueNext(track);
                     }}
-                    className="px-2 py-0.5 text-[10px] font-mono text-zinc-400 hover:text-white rounded hover:bg-white/[0.06]"
-                    title="Phát tiếp theo"
+                    className="px-2.5 py-1 text-xs font-mono text-zinc-400 hover:text-white rounded-md hover:bg-white/[0.08] border border-white/[0.06]"
+                    title="Play next"
                   >
-                    Kế tiếp
+                    Play Next
                   </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       playlistService.enqueueEnd(track);
                     }}
-                    className="p-1 text-zinc-400 hover:text-white rounded hover:bg-white/[0.06]"
-                    title="Thêm vào hàng đợi"
+                    className="p-1.5 text-zinc-400 hover:text-white rounded-md hover:bg-white/[0.08]"
+                    title="Add to queue"
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <Plus className="w-4 h-4" />
                   </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       onOpenAddToPlaylist(track);
                     }}
-                    className="p-1 text-zinc-400 hover:text-white rounded hover:bg-white/[0.06]"
-                    title="Thêm vào playlist"
+                    className="p-1.5 text-zinc-400 hover:text-white rounded-md hover:bg-white/[0.08]"
+                    title="Add to playlist"
                   >
-                    <FolderPlus className="w-3.5 h-3.5" />
+                    <FolderPlus className="w-4 h-4" />
                   </button>
                 </div>
               </div>

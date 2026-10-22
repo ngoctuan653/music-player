@@ -42,6 +42,7 @@ export interface AppSettings {
   apiKey: string;
   autoPlayNext: boolean;
   theme: 'dark' | 'system';
+  glassEffect: 'auto' | 'high' | 'balanced' | 'performance' | 'off';
 }
 
 export interface SearchResultItem {
@@ -64,3 +65,23 @@ export interface CommentItem {
 
 export type ActivePage = 'home' | 'search' | 'queue' | 'playlists' | 'history' | 'settings';
 
+declare global {
+  interface Window {
+    electronAPI?: {
+      minimize: () => void;
+      maximize: () => void;
+      close: () => void;
+      isMaximized?: () => Promise<boolean>;
+      onWindowStateChange?: (callback: (isMaximized: boolean) => void) => () => void;
+      onGlassEnvironment?: (callback: (environment: { onBattery: boolean; gpuHealthy: boolean }) => void) => () => void;
+      getGlassEnvironment?: () => Promise<{ onBattery: boolean; gpuHealthy: boolean }>;
+      onGlassWindowVisibility?: (callback: (visible: boolean) => void) => () => void;
+      setAudioOutputDevice?: (deviceId: string) => Promise<boolean>;
+      fetchNet?: (url: string) => Promise<{ ok: boolean; status: number; data?: string; error?: string }>;
+      onMediaControl: (callback: (action: string) => void) => () => void;
+      setAppBadge?: (text: string) => void;
+      getDnsConfig?: () => Promise<{ mode: 'ublock' | 'controld' | 'hagezi' | 'nextdns' | 'cloudflare' | 'adguard' | 'family' | 'custom' | 'off'; url?: string; accountKey?: string }>;
+      setDnsConfig?: (config: { mode: 'ublock' | 'controld' | 'hagezi' | 'nextdns' | 'cloudflare' | 'adguard' | 'family' | 'custom' | 'off'; url?: string; accountKey?: string }) => Promise<{ success: boolean; error?: string }>;
+    };
+  }
+}

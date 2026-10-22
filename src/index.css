@@ -4,16 +4,22 @@
 
 :root {
   color-scheme: dark;
-  --chassis: #09090b;
-  --panel: #111114;
-  --panel-hover: #16161b;
-  --panel-active: #1c1c22;
-  --hairline: rgba(255, 255, 255, 0.06);
-  --hairline-active: rgba(255, 255, 255, 0.12);
-  --tally-red: #ef4444;
-  --legend-silver: #f4f4f5;
-  --legend-muted: #71717a;
-  --legend-subtle: #52525b;
+  --am-base: #131313;
+  --am-sidebar: #1c1c1e;
+  --am-surface: #232323;
+  --am-elevated: #2c2c2e;
+  --am-titlebar: #161616;
+  --am-divider: rgba(255, 255, 255, 0.08);
+  --am-divider-strong: rgba(255, 255, 255, 0.12);
+  --am-text-primary: #ffffff;
+  --am-text-secondary: rgba(235, 235, 245, 0.75);
+  --am-text-tertiary: rgba(235, 235, 245, 0.45);
+  --am-accent: #fc3c44;
+  --bg-base: #131313;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
@@ -21,17 +27,143 @@ body {
   padding: 0;
   user-select: none;
   -webkit-user-select: none;
-  background-color: var(--chassis);
-  color: var(--legend-silver);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--am-base);
+  color: var(--am-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Icons', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   overflow: hidden;
   letter-spacing: -0.01em;
 }
 
-/* Precision Scrollbar */
+.app-root {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--am-base);
+  overflow: hidden;
+}
+
+.app-shell {
+  display: flex;
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.page {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto;
+  background-color: var(--am-base);
+}
+
+/* Apple Music Flat Bottom PlayerBar */
+.am-playerbar {
+  position: relative;
+  width: 100%;
+  height: 64px;
+  background-color: var(--am-titlebar);
+  border-top: 1px solid var(--am-divider);
+  z-index: 40;
+  flex-shrink: 0;
+}
+
+/* Apple Music Cards & Content Panels (Clean Matte Dark) */
+.glass-content-panel {
+  background: var(--am-sidebar) !important;
+  border: 1px solid var(--am-divider) !important;
+  border-radius: 12px;
+}
+
+.glass-content-card {
+  background: var(--am-sidebar) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 12px;
+  transition: all 180ms ease;
+}
+
+.glass-content-card:hover {
+  background: var(--am-surface) !important;
+  border-color: var(--am-divider-strong) !important;
+  transform: translateY(-2px);
+}
+
+.glass-search-shell,
+.glass-results-list {
+  background: var(--am-sidebar) !important;
+  border: 1px solid var(--am-divider) !important;
+  border-radius: 12px;
+}
+
+.glass-search-input {
+  background: var(--am-surface) !important;
+  border: 1px solid var(--am-divider) !important;
+}
+
+.glass-result-row {
+  transition: background-color 150ms ease;
+}
+
+.glass-result-row:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Apple Music Standard Track Row */
+.am-track-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-radius: 8px;
+  transition: background-color 140ms ease;
+  cursor: pointer;
+}
+
+.am-track-row:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.am-track-row.is-active {
+  background-color: rgba(252, 60, 68, 0.12);
+  color: var(--am-accent);
+}
+
+/* Audio Output Selector in Studio Dock */
+.audio-output-trigger {
+  width: auto;
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+.audio-output-dock .audio-output-selector {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.audio-output-dock .audio-output-trigger {
+  width: 100%;
+}
+
+@media (max-width: 960px) {
+  .audio-output-dock .audio-output-selector {
+    flex: 0 1 auto;
+  }
+
+  .audio-output-label {
+    display: none;
+  }
+
+  .audio-output-trigger {
+    width: auto;
+    padding-left: 0.375rem;
+    padding-right: 0.375rem;
+  }
+}
+
+/* Precision Scrollbar (macOS / Apple Music style) */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -39,12 +171,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.32);
 }
 
 /* Electron Window Drag Regions */

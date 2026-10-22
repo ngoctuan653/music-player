@@ -106,7 +106,21 @@ class AudioOutputService {
       }
     }
 
-    // Apply through Electron IPC to all cross-origin subframes (including YouTube Iframe)
+    // Apply to webview guest video element
+    const wv = document.getElementById('yt-player-webview') as any;
+    if (wv && typeof wv.executeJavaScript === 'function') {
+      try {
+        await wv.executeJavaScript(`
+          if (document.querySelector('video') && typeof document.querySelector('video').setSinkId === 'function') {
+            document.querySelector('video').setSinkId('${sinkId}').catch(() => {});
+          }
+        `);
+      } catch (e) {
+        console.warn('Failed to setSinkId on webview:', e);
+      }
+    }
+
+    // Apply through Electron IPC to all cross-origin subframes & webviews
     if (window.electronAPI?.setAudioOutputDevice) {
       try {
         await window.electronAPI.setAudioOutputDevice(sinkId);
