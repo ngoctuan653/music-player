@@ -241,13 +241,21 @@ function setupNetworkInterceptors() {
   app.on('web-contents-created', (_event, contents) => {
     contents.setMaxListeners(100);
     attachAdBlocker(contents.session);
+    try {
+      contents.setBackgroundThrottling(false);
+    } catch {}
 
-    // Explicitly guarantee no user gesture requirement for <webview> tags
+    // Explicitly guarantee no user gesture requirement and disable throttling for <webview> tags
     contents.on('will-attach-webview' as any, (_waEvent: any, webPreferences: any) => {
       webPreferences.autoplayPolicy = 'no-user-gesture-required';
+      webPreferences.backgroundThrottling = false;
     });
 
     if (contents.getType() === 'webview') {
+      try {
+        contents.setBackgroundThrottling(false);
+      } catch {}
+
       contents.on('console-message', (_e, level, msg) => {
         if (msg.includes('Insecure Content-Security-Policy') || msg.includes('powerPreference')) return;
         console.log(`[Webview L${level}] ${msg}`);
@@ -304,9 +312,17 @@ async function createWindow() {
       contextIsolation: true,
       webSecurity: true, // Clean secure standard
       webviewTag: true,  // Enables native YouTube Webview streaming engine
+      backgroundThrottling: false,
+      autoplayPolicy: 'no-user-gesture-required',
     },
     icon: getAppIconPath(),
     show: false,
+  });
+
+  mainWindow.webContents.on('did-attach-webview' as any, (_e: any, guestContents: any) => {
+    try {
+      guestContents.setBackgroundThrottling(false);
+    } catch {}
   });
 
   if (isDev && process.env['VITE_DEV_SERVER_URL']) {

@@ -36,16 +36,18 @@ export function buildPlayerInjectedScript(opts: PlayerInjectedScriptOptions): st
           );
 
           if (isAd && v) {
-            v.muted = true;
+            // Keep audio stream active (not muted) with inaudible volume to prevent Chromium
+            // from pausing playback with 'video-only background media was paused to save power'
+            v.muted = false;
+            v.volume = 0.0001;
             v.playbackRate = 16;
             if (!isNaN(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.2) {
               v.currentTime = v.duration;
             }
           } else if (v && !isAd) {
             if (v.playbackRate !== 1) v.playbackRate = 1;
-            if (v.muted && !${isMuted ? 'true' : 'false'}) {
-              v.muted = false;
-            }
+            v.muted = ${isMuted ? 'true' : 'false'};
+            v.volume = ${volume / 100};
           }
 
           // Click any skip button immediately
@@ -113,6 +115,10 @@ class PlayerService {
   private errorStreakCounter: number = 0;
   private retryTimer: any = null;
   private retryCount: number = 0;
+  private snapTimers: any[] = [];
+  private adStuckStreak: number = 0;
+  private adLastTime: number = -1;
+  private adStuckRetryCount: number = 0;
 
   private status: PlayerStatus = {
     currentTrack: null,
@@ -243,7 +249,9 @@ class PlayerService {
             );
 
             if (adActive && v) {
-              v.muted = true;
+              // Maintain active audio track with inaudible volume to prevent background power-saving suspend
+              v.muted = false;
+              v.volume = 0.0001;
               v.playbackRate = 16;
               if (!isNaN(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.2) {
                 v.currentTime = v.duration;
@@ -257,9 +265,8 @@ class PlayerService {
               }
             } else if (v && !adActive) {
               if (v.playbackRate !== 1) v.playbackRate = 1;
-              if (v.muted && !${this.status.isMuted ? 'true' : 'false'}) {
-                v.muted = false;
-              }
+              v.muted = ${this.status.isMuted ? 'true' : 'false'};
+              v.volume = ${this.status.volume / 100};
             }
 
             // Real media error on video element
@@ -311,14 +318,10 @@ class PlayerService {
                     const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
                     const v = document.querySelector('video');
                     if (p && typeof p.loadVideoById === 'function') {
-                      const currentId = p.getVideoData ? p.getVideoData()?.video_id : null;
-                      if (currentId === '${target.videoId}') {
-                        p.seekTo?.(0, true);
-                        p.playVideo?.();
-                      } else {
-                        p.loadVideoById('${target.videoId}');
-                        p.playVideo?.();
-                      }
+                      // Point C: Always force loadVideoById for cold start (dropping seekTo)
+                      // so YouTube player reloads video stream freshly, bypassing stuck pre-roll ads
+                      p.loadVideoById('${target.videoId}');
+                      p.playVideo?.();
                       if (v) {
                         v.muted = ${this.status.isMuted ? 'true' : 'false'};
                         v.volume = ${this.status.volume / 100};
@@ -336,8 +339,40 @@ class PlayerService {
 
           if (!this.status.currentTrack) return;
 
-          // 2. Active ad segment handling
+          // 2. Active ad segment handling (with Point D stuck ad recovery)
           if (data.adActive) {
+            if (this.adLastTime === data.currentTime) {
+              this.adStuckStreak++;
+            } else {
+              this.adStuckStreak = 0;
+              this.adLastTime = data.currentTime;
+            }
+
+            // Point D: If ad is stuck at the exact same currentTime for ~3s (12 cycles of 250ms)
+            if (this.adStuckStreak >= 12 && this.adStuckRetryCount < 2 && this.status.currentTrack) {
+              this.adStuckStreak = 0;
+              this.adStuckRetryCount++;
+              const curTrackId = this.status.currentTrack.videoId;
+              console.log(`[player] Ad stuck detected at t=${data.currentTime}, forcing loadVideoById retry #${this.adStuckRetryCount}`);
+              this.webview.executeJavaScript(`
+                (() => {
+                  try {
+                    const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+                    if (p && typeof p.loadVideoById === 'function') {
+                      p.loadVideoById('${curTrackId}');
+                      p.playVideo?.();
+                    }
+                    const v = document.querySelector('video');
+                    if (v) {
+                      v.muted = ${this.status.isMuted ? 'true' : 'false'};
+                      v.volume = ${this.status.volume / 100};
+                      v.play().catch(e => console.log('play rejected:', e.name, e.message));
+                    }
+                  } catch(e){}
+                })()
+              `, true).catch(() => {});
+            }
+
             this.status = {
               ...this.status,
               isBuffering: true,
@@ -345,6 +380,10 @@ class PlayerService {
             };
             this.notify();
             return;
+          } else {
+            this.adStuckStreak = 0;
+            this.adLastTime = -1;
+            this.adStuckRetryCount = 0;
           }
 
           // 3. Error handling: Media errors trigger immediately; DOM errors require 3 consecutive cycles
@@ -503,6 +542,9 @@ class PlayerService {
   }
 
   private logPlaybackSnapshots(): void {
+    this.snapTimers.forEach((t) => clearTimeout(t));
+    this.snapTimers = [];
+
     const snap = () =>
       this.webview
         ?.executeJavaScript(
@@ -530,7 +572,7 @@ class PlayerService {
         .then((s: string) => console.log('[snap]', s))
         .catch(() => {});
 
-    [500, 1500, 3000, 5000].forEach((ms) => setTimeout(snap, ms));
+    this.snapTimers = [500, 1500, 3000, 5000].map((ms) => setTimeout(snap, ms));
   }
 
   private handleTrackEnded(): void {
@@ -545,6 +587,11 @@ class PlayerService {
 
   public async playTrack(track: TrackReference): Promise<void> {
     this.cancelPlaybackRetry();
+    this.snapTimers.forEach((t) => clearTimeout(t));
+    this.snapTimers = [];
+    this.adStuckStreak = 0;
+    this.adLastTime = -1;
+    this.adStuckRetryCount = 0;
     this.isEndedHandled = false;
     this.userWantsPlaying = true;
     this.trackStartTime = Date.now();
