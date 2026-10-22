@@ -460,7 +460,7 @@ class PlayerService {
     if (this.webview) {
       this.webview
         .executeJavaScript(
-          'document.querySelector("video")?.play(); const p = document.getElementById("movie_player"); if (p && typeof p.playVideo === "function") p.playVideo();'
+          '(() => { try { document.querySelector("video")?.play(); document.getElementById("movie_player")?.playVideo?.(); } catch(e){} })()'
         )
         .catch(() => {});
     }
@@ -474,7 +474,7 @@ class PlayerService {
     if (this.webview) {
       this.webview
         .executeJavaScript(
-          'document.querySelector("video")?.pause(); const p = document.getElementById("movie_player"); if (p && typeof p.pauseVideo === "function") p.pauseVideo();'
+          '(() => { try { document.querySelector("video")?.pause(); document.getElementById("movie_player")?.pauseVideo?.(); } catch(e){} })()'
         )
         .catch(() => {});
     }
@@ -494,7 +494,7 @@ class PlayerService {
 
     if (this.webview) {
       this.webview
-        .executeJavaScript(`if (document.querySelector('video')) document.querySelector('video').currentTime = ${seconds};`)
+        .executeJavaScript(`(() => { try { const v = document.querySelector('video'); if (v) v.currentTime = ${seconds}; } catch(e){} })()`)
         .catch(() => {});
     }
   }
@@ -508,7 +508,7 @@ class PlayerService {
     if (this.webview) {
       this.webview
         .executeJavaScript(
-          `if (document.querySelector('video')) { document.querySelector('video').volume = ${clamped / 100}; document.querySelector('video').muted = false; }`
+          `(() => { try { const v = document.querySelector('video'); if (v) { v.volume = ${clamped / 100}; v.muted = false; } } catch(e){} })()`
         )
         .catch(() => {});
     }
@@ -521,7 +521,7 @@ class PlayerService {
 
     if (this.webview) {
       this.webview
-        .executeJavaScript(`if (document.querySelector('video')) document.querySelector('video').muted = ${nextMuted};`)
+        .executeJavaScript(`(() => { try { const v = document.querySelector('video'); if (v) v.muted = ${nextMuted}; } catch(e){} })()`)
         .catch(() => {});
     }
   }
