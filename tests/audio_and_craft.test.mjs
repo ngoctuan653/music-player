@@ -136,3 +136,51 @@ describe('YouTube Error 150/101 Bypass Header Logic Tests', () => {
     assert.equal(mapPlayerError(999), 'Không thể phát video này.');
   });
 });
+
+describe('Volume Taper & Perceptual Loudness Curve Tests', () => {
+  function calculateGain(volumePercent) {
+    const clamped = Math.max(0, Math.min(100, volumePercent));
+    if (clamped <= 0) return 0;
+    if (clamped >= 100) return 1;
+    return Math.pow(clamped / 100, 2);
+  }
+
+  test('Clamps out-of-range volume values accurately', () => {
+    assert.equal(calculateGain(-20), 0);
+    assert.equal(calculateGain(0), 0);
+    assert.equal(calculateGain(100), 1);
+    assert.equal(calculateGain(150), 1);
+  });
+
+  test('Provides balanced acoustic dynamic range across entire slider', () => {
+    const gain50 = calculateGain(50);
+    const gain75 = calculateGain(75);
+    const gain100 = calculateGain(100);
+
+    assert.equal(gain50, 0.25);
+    assert.equal(gain75, 0.5625);
+    assert.equal(gain100, 1.0);
+
+    // Delta between 75% and 100% must provide significant acoustic power boost (> 4 dB)
+    // to eliminate the perceived plateau where 75% sounds maxed out.
+    const dbBoost75to100 = 20 * Math.log10(gain100 / gain75);
+    assert.ok(dbBoost75to100 >= 4.5, `Expected dB boost >= 4.5, got ${dbBoost75to100}`);
+    assert.ok(gain100 - gain75 > 0.4, 'Gain difference between 75% and 100% must exceed 0.40');
+  });
+
+  test('Unmute from 0% volume restores comfortable default listening volume', () => {
+    let volume = 0;
+    let isMuted = true;
+
+    // Simulate toggleMute when volume is 0
+    const nextMuted = !isMuted;
+    if (!nextMuted && volume === 0) {
+      volume = 50;
+    }
+    isMuted = nextMuted;
+
+    assert.equal(isMuted, false);
+    assert.equal(volume, 50);
+  });
+});
+

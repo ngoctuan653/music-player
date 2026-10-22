@@ -364,15 +364,20 @@ export const FocusModeVinylView: React.FC<FocusModeVinylViewProps> = ({ isOpen, 
                 <Volume2 className="w-4 h-4" />
               )}
             </button>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={status.isMuted ? 0 : status.volume}
-              onChange={handleVolumeChange}
-              className="w-14 sm:w-20 accent-[#fc3c44] h-1.5 rounded-lg bg-white/[0.1] cursor-pointer"
-              title={`Volume: ${status.volume}%`}
-            />
+            <div className="flex items-center gap-1.5">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={status.isMuted ? 0 : status.volume}
+                onChange={handleVolumeChange}
+                className="w-16 sm:w-24 accent-[#fc3c44] h-1.5 rounded-lg bg-white/[0.1] cursor-pointer"
+                title={`Volume: ${status.isMuted ? 0 : status.volume}%`}
+              />
+              <span className="text-[10px] font-mono text-zinc-400 w-7 tabular-nums text-right">
+                {status.isMuted ? '0%' : `${status.volume}%`}
+              </span>
+            </div>
           </div>
         </div>
       </footer>

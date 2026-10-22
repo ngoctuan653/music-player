@@ -12,6 +12,9 @@ export interface PlayerInjectedScriptOptions {
 
 export function buildPlayerInjectedScript(opts: PlayerInjectedScriptOptions): string {
   const { volume, isMuted, activeSink, userWantsPlaying } = opts;
+  const clampedVol = Math.max(0, Math.min(100, volume));
+  const gain = clampedVol <= 0 ? 0 : clampedVol >= 100 ? 1 : Math.pow(clampedVol / 100, 2);
+  const ytVol = Math.round(gain * 100);
   return `
     (() => {
       // 1. Maintain runtime playback intent
@@ -47,7 +50,7 @@ export function buildPlayerInjectedScript(opts: PlayerInjectedScriptOptions): st
           } else if (v && !isAd) {
             if (v.playbackRate !== 1) v.playbackRate = 1;
             v.muted = ${isMuted ? 'true' : 'false'};
-            v.volume = ${volume / 100};
+            v.volume = ${gain};
           }
 
           // Click any skip button immediately
@@ -90,11 +93,16 @@ export function buildPlayerInjectedScript(opts: PlayerInjectedScriptOptions): st
       try {
         const v = document.querySelector('video');
         if (v) {
-          v.volume = ${volume / 100};
+          v.volume = ${gain};
           v.muted = ${isMuted ? 'true' : 'false'};
           if (typeof v.setSinkId === 'function' && '${activeSink || 'default'}' !== 'default') {
             v.setSinkId('${activeSink}').catch(() => {});
           }
+        }
+        const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+        if (p && typeof p.setVolume === 'function') {
+          p.setVolume(${ytVol});
+          if (${isMuted}) p.mute?.(); else p.unMute?.();
         }
       } catch (e) {}
     })();
@@ -125,13 +133,33 @@ class PlayerService {
     isPlaying: false,
     currentTime: 0,
     duration: 0,
-    volume: 80,
+    volume: (() => {
+      try {
+        const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('ytm_volume') : null;
+        if (saved !== null && !isNaN(Number(saved))) {
+          return Math.max(0, Math.min(100, Number(saved)));
+        }
+      } catch {}
+      return 80;
+    })(),
     isMuted: false,
     isBuffering: false,
     repeatMode: 'off',
     isShuffled: false,
     error: null,
   };
+
+  public calculateGain(volumePercent: number): number {
+    const clamped = Math.max(0, Math.min(100, volumePercent));
+    if (clamped <= 0) return 0;
+    if (clamped >= 100) return 1;
+    // Audio taper (Square Law): converts linear slider percentage to natural human loudness curve.
+    // In human perception, linear amplitude at 75% already delivers ~92% perceived loudness,
+    // causing a perceived ceiling where moving 75% -> 100% does not noticeably increase sound.
+    // Using (x / 100)^2 provides a smooth, balanced dynamic range across the full 0-100% scale,
+    // ensuring volume continues to gain powerfully and audibly all the way from 75% to 100%.
+    return Math.pow(clamped / 100, 2);
+  }
 
   public initWebview(wv: any): void {
     if (!wv) return;
@@ -266,7 +294,10 @@ class PlayerService {
             } else if (v && !adActive) {
               if (v.playbackRate !== 1) v.playbackRate = 1;
               v.muted = ${this.status.isMuted ? 'true' : 'false'};
-              v.volume = ${this.status.volume / 100};
+              const targetGain = ${this.calculateGain(this.status.volume)};
+              if (Math.abs(v.volume - targetGain) > 0.02) {
+                v.volume = targetGain;
+              }
             }
 
             // Real media error on video element
@@ -324,8 +355,11 @@ class PlayerService {
                       p.playVideo?.();
                       if (v) {
                         v.muted = ${this.status.isMuted ? 'true' : 'false'};
-                        v.volume = ${this.status.volume / 100};
+                        v.volume = ${this.calculateGain(this.status.volume)};
                         v.play().catch(e => console.log('play rejected:', e.name, e.message));
+                      }
+                      if (p && typeof p.setVolume === 'function') {
+                        p.setVolume(${Math.round(this.calculateGain(this.status.volume) * 100)});
                       }
                     }
                   } catch(e) {}
@@ -365,8 +399,11 @@ class PlayerService {
                     const v = document.querySelector('video');
                     if (v) {
                       v.muted = ${this.status.isMuted ? 'true' : 'false'};
-                      v.volume = ${this.status.volume / 100};
+                      v.volume = ${this.calculateGain(this.status.volume)};
                       v.play().catch(e => console.log('play rejected:', e.name, e.message));
+                    }
+                    if (p && typeof p.setVolume === 'function') {
+                      p.setVolume(${Math.round(this.calculateGain(this.status.volume) * 100)});
                     }
                   } catch(e){}
                 })()
@@ -636,8 +673,11 @@ class PlayerService {
                   }
                   if (v) {
                     v.muted = ${this.status.isMuted ? 'true' : 'false'};
-                    v.volume = ${this.status.volume / 100};
+                    v.volume = ${this.calculateGain(this.status.volume)};
                     v.play().catch(e => console.log('play rejected:', e.name, e.message));
+                  }
+                  if (p && typeof p.setVolume === 'function') {
+                    p.setVolume(${Math.round(this.calculateGain(this.status.volume) * 100)});
                   }
                   // Auto-confirm warning if present immediately
                   setTimeout(() => {
@@ -771,7 +811,13 @@ class PlayerService {
     const clamped = Math.max(0, Math.min(100, volume));
     this.status.volume = clamped;
     this.status.isMuted = clamped === 0;
+    try {
+      localStorage.setItem('ytm_volume', String(clamped));
+    } catch {}
     this.notify();
+
+    const gain = this.calculateGain(clamped);
+    const ytVolume = Math.round(gain * 100);
 
     if (this.webview) {
       this.webview
@@ -780,12 +826,12 @@ class PlayerService {
             try {
               const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
               if (p && typeof p.setVolume === 'function') {
-                p.setVolume(${clamped});
+                p.setVolume(${ytVolume});
                 if (${clamped === 0}) p.mute?.(); else p.unMute?.();
               }
               const v = document.querySelector('video');
               if (v) {
-                v.volume = ${clamped / 100};
+                v.volume = ${gain};
                 v.muted = ${clamped === 0};
               }
             } catch(e){}
@@ -797,8 +843,17 @@ class PlayerService {
 
   public toggleMute(): void {
     const nextMuted = !this.status.isMuted;
+    if (!nextMuted && this.status.volume === 0) {
+      this.status.volume = 50;
+      try {
+        localStorage.setItem('ytm_volume', '50');
+      } catch {}
+    }
     this.status.isMuted = nextMuted;
     this.notify();
+
+    const gain = nextMuted ? 0 : this.calculateGain(this.status.volume);
+    const ytVolume = nextMuted ? 0 : Math.round(gain * 100);
 
     if (this.webview) {
       this.webview
@@ -807,10 +862,16 @@ class PlayerService {
             try {
               const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
               if (p) {
-                if (${nextMuted}) p.mute?.(); else p.unMute?.();
+                if (${nextMuted}) p.mute?.(); else {
+                  p.unMute?.();
+                  p.setVolume?.(${ytVolume});
+                }
               }
               const v = document.querySelector('video');
-              if (v) v.muted = ${nextMuted};
+              if (v) {
+                v.muted = ${nextMuted};
+                v.volume = ${gain};
+              }
             } catch(e){}
           })()
         `, true)

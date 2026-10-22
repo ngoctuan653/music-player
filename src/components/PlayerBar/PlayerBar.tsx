@@ -329,14 +329,20 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               <Volume2 className="w-3.5 h-3.5" />
             )}
           </button>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={status.isMuted ? 0 : status.volume}
-            onChange={handleVolumeChange}
-            className="w-16 h-1 bg-white/[0.15] accent-[#fc3c44] rounded-full cursor-pointer"
-          />
+          <div className="flex items-center gap-1">
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={status.isMuted ? 0 : status.volume}
+              onChange={handleVolumeChange}
+              className="w-16 h-1 bg-white/[0.15] accent-[#fc3c44] rounded-full cursor-pointer"
+              title={`Volume: ${status.isMuted ? 0 : status.volume}%`}
+            />
+            <span className="text-[9px] font-mono text-zinc-400 w-6 tabular-nums text-right">
+              {status.isMuted ? '0%' : `${status.volume}%`}
+            </span>
+          </div>
         </div>
       </div>
     </footer>
