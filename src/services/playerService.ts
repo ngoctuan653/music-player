@@ -3,6 +3,102 @@ import { audioOutputService } from './audioOutputService';
 
 export type PlayerListener = (status: PlayerStatus) => void;
 
+export interface PlayerInjectedScriptOptions {
+  volume: number;
+  isMuted: boolean;
+  activeSink?: string;
+  userWantsPlaying: boolean;
+}
+
+export function buildPlayerInjectedScript(opts: PlayerInjectedScriptOptions): string {
+  const { volume, isMuted, activeSink, userWantsPlaying } = opts;
+  return `
+    (() => {
+      // 1. Maintain runtime playback intent
+      window.__userWantsPlaying = ${userWantsPlaying ? 'true' : 'false'};
+
+      // 2. Ad cleaner & prompt skipper (NEVER forces playback)
+      function purgeAdsAndWarnings() {
+        try {
+          const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+          const v = document.querySelector('video');
+
+          // Disable YouTube native autonav to prevent skipping past user queue
+          if (p && typeof p.setAutonav === 'function') {
+            try { p.setAutonav(false); } catch(e) {}
+          }
+
+          // Strictly detect ACTIVE in-stream ad
+          const isAd = Boolean(
+            p?.classList.contains('ad-showing') ||
+            p?.classList.contains('ad-interrupting') ||
+            (p && typeof p.getAdState === 'function' && p.getAdState() === 1)
+          );
+
+          if (isAd && v) {
+            v.muted = true;
+            v.playbackRate = 16;
+            if (!isNaN(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.2) {
+              v.currentTime = v.duration;
+            }
+          } else if (v && !isAd) {
+            if (v.playbackRate !== 1) v.playbackRate = 1;
+            if (v.muted && !${isMuted ? 'true' : 'false'}) {
+              v.muted = false;
+            }
+          }
+
+          // Click any skip button immediately
+          const skipBtns = document.querySelectorAll(
+            '.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button-text, button.ytp-ad-skip-button-text, .ytp-ad-overlay-close-button'
+          );
+          skipBtns.forEach(b => { try { b.click(); } catch(e) {} });
+
+          if (p && typeof p.skipAd === 'function') {
+            try { p.skipAd(); } catch (e) {}
+          }
+
+          // Auto-confirm viewer discretion / age warning prompts (e.g. Kendrick Lamar Not Like Us)
+          const confirmBtns = document.querySelectorAll(
+            '#confirm-button, ytd-button-renderer#confirm-button button, button[aria-label*="understand" i], button[aria-label*="proceed" i], button[aria-label*="continue" i], yt-playability-error-supported-renderers button, ytd-enforcement-message-view-model button'
+          );
+          confirmBtns.forEach(b => { try { b.click(); } catch(e) {} });
+        } catch (e) {}
+      }
+
+      // Install MutationObserver targeting player container if available
+      if (!window.__yt_ad_cleaner_installed) {
+        window.__yt_ad_cleaner_installed = true;
+        try {
+          const target = document.getElementById('player') || document.getElementById('movie_player') || document.body;
+          const obs = new MutationObserver(purgeAdsAndWarnings);
+          obs.observe(target, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['class']
+          });
+        } catch(e) {}
+        setInterval(purgeAdsAndWarnings, 250);
+      }
+
+      purgeAdsAndWarnings();
+
+      // Audio sink & volume initialization
+      try {
+        const v = document.querySelector('video');
+        if (v) {
+          v.volume = ${volume / 100};
+          v.muted = ${isMuted ? 'true' : 'false'};
+          if (typeof v.setSinkId === 'function' && '${activeSink || 'default'}' !== 'default') {
+            v.setSinkId('${activeSink}').catch(() => {});
+          }
+        }
+      } catch (e) {}
+    })();
+  `;
+}
+
 class PlayerService {
   private webview: any = null;
   private webviewLoadListener: (() => void) | null = null;
@@ -12,6 +108,9 @@ class PlayerService {
   private isEndedHandled: boolean = false;
   private trackStartTime: number = 0;
   private userWantsPlaying: boolean = false;
+  private isPlayerReady: boolean = false;
+  private pendingTrack: TrackReference | null = null;
+  private errorStreakCounter: number = 0;
 
   private status: PlayerStatus = {
     currentTrack: null,
@@ -38,6 +137,7 @@ class PlayerService {
     }
 
     this.webview = wv;
+    this.isPlayerReady = false;
 
     this.webviewLoadListener = () => {
       this.onWebviewLoaded();
@@ -105,99 +205,13 @@ class PlayerService {
       this.webview.insertCSS(css).catch(() => {});
     } catch {}
 
-    // Inject persistent in-page ad skipper, interstitial confirmation, and audio config
     const activeSink = audioOutputService.getActiveDeviceId();
-    const script = `
-      (() => {
-        function purgeAdsAndWarnings() {
-          try {
-            const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
-            const v = document.querySelector('video');
-
-            // 1. Strictly detect ACTIVE in-stream ad
-            const isAd = Boolean(
-              p?.classList.contains('ad-showing') ||
-              p?.classList.contains('ad-interrupting') ||
-              (p && typeof p.getAdState === 'function' && p.getAdState() === 1)
-            );
-
-            if (isAd && v) {
-              v.muted = true;
-              v.playbackRate = 16;
-              if (!isNaN(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.2) {
-                v.currentTime = v.duration;
-              }
-            } else if (v && !isAd) {
-              if (v.playbackRate !== 1) v.playbackRate = 1;
-              if (v.muted && !${this.status.isMuted}) {
-                v.muted = false;
-              }
-            }
-
-            // 2. Click any skip button immediately
-            const skipBtns = document.querySelectorAll(
-              '.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button-text, button.ytp-ad-skip-button-text, .ytp-ad-overlay-close-button'
-            );
-            skipBtns.forEach(b => { try { b.click(); } catch(e) {} });
-
-            if (p && typeof p.skipAd === 'function') {
-              try { p.skipAd(); } catch (e) {}
-            }
-
-            // 3. Auto-confirm viewer discretion / age warning prompts (Kendrick Lamar Not Like Us)
-            const confirmBtns = document.querySelectorAll(
-              '#confirm-button, ytd-button-renderer#confirm-button button, button[aria-label*="understand" i], button[aria-label*="proceed" i], button[aria-label*="continue" i], yt-playability-error-supported-renderers button, ytd-enforcement-message-view-model button'
-            );
-            confirmBtns.forEach(b => { try { b.click(); } catch(e) {} });
-
-            // 4. Auto-resume main video if paused after consent prompt
-            if (v && v.paused && !isAd && ${this.userWantsPlaying}) {
-              v.play().catch(() => {});
-              if (p && typeof p.playVideo === 'function') {
-                p.playVideo();
-              }
-            }
-          } catch (e) {}
-        }
-
-        // Install MutationObserver for instant synchronous ad skipping
-        if (!window.__yt_ad_cleaner_installed) {
-          window.__yt_ad_cleaner_installed = true;
-          try {
-            const obs = new MutationObserver(purgeAdsAndWarnings);
-            obs.observe(document.body || document.documentElement, {
-              childList: true,
-              subtree: true,
-              attributes: true,
-              attributeFilter: ['class']
-            });
-          } catch(e) {}
-          setInterval(purgeAdsAndWarnings, 150);
-        }
-
-        // Run once immediately
-        purgeAdsAndWarnings();
-
-        // Audio sink & volume initialization
-        try {
-          const v = document.querySelector('video');
-          if (v) {
-            v.volume = ${this.status.volume / 100};
-            v.muted = ${this.status.isMuted};
-            if (typeof v.setSinkId === 'function' && '${activeSink}' !== 'default') {
-              v.setSinkId('${activeSink}').catch(() => {});
-            }
-            if (${this.userWantsPlaying}) {
-              v.play().catch(() => {});
-              const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
-              if (p && typeof p.playVideo === 'function') {
-                try { p.playVideo(); } catch (e) {}
-              }
-            }
-          }
-        } catch (e) {}
-      })();
-    `;
+    const script = buildPlayerInjectedScript({
+      volume: this.status.volume,
+      isMuted: this.status.isMuted,
+      activeSink,
+      userWantsPlaying: this.userWantsPlaying,
+    });
 
     try {
       this.webview.executeJavaScript(script).catch(() => {});
@@ -208,17 +222,16 @@ class PlayerService {
     if (this.progressTimer) return;
 
     this.progressTimer = setInterval(async () => {
-      if (!this.webview || !this.status.currentTrack) return;
+      if (!this.webview) return;
 
       const queryScript = `
         (() => {
           try {
-            const v = document.querySelector('video');
-            if (!v) return null;
             const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
-            const videoId = p && typeof p.getVideoData === 'function'
-              ? p.getVideoData().video_id
-              : null;
+            const v = document.querySelector('video');
+            const isReady = Boolean(p && typeof p.loadVideoById === 'function');
+            const playerState = p && typeof p.getPlayerState === 'function' ? p.getPlayerState() : -1;
+            const videoId = p && typeof p.getVideoData === 'function' ? p.getVideoData()?.video_id : null;
 
             // Check if in-stream ad is strictly active
             const adActive = Boolean(
@@ -227,7 +240,7 @@ class PlayerService {
               (p && typeof p.getAdState === 'function' && p.getAdState() === 1)
             );
 
-            if (adActive) {
+            if (adActive && v) {
               v.muted = true;
               v.playbackRate = 16;
               if (!isNaN(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.2) {
@@ -240,53 +253,36 @@ class PlayerService {
               if (p && typeof p.skipAd === 'function') {
                 try { p.skipAd(); } catch(e) {}
               }
-            } else if (v) {
+            } else if (v && !adActive) {
               if (v.playbackRate !== 1) v.playbackRate = 1;
-              if (v.muted && !${this.status.isMuted}) {
+              if (v.muted && !${this.status.isMuted ? 'true' : 'false'}) {
                 v.muted = false;
-              }
-              const targetVol = ${this.status.volume / 100};
-              if (Math.abs(v.volume - targetVol) > 0.05) {
-                v.volume = targetVol;
-              }
-
-              // Active playback enforcement based on user intent
-              if (${this.userWantsPlaying} && v.paused && !v.ended) {
-                v.play().catch(() => {});
-                if (p && typeof p.playVideo === 'function') {
-                  p.playVideo();
-                }
-              } else if (!${this.userWantsPlaying} && !v.paused) {
-                v.pause();
-                if (p && typeof p.pauseVideo === 'function') {
-                  p.pauseVideo();
-                }
               }
             }
 
-            // Click interstitial warnings / confirm buttons (e.g. Kendrick Lamar content warning)
-            const confirmBtns = document.querySelectorAll(
-              '#confirm-button, ytd-button-renderer#confirm-button button, button[aria-label*="understand" i], button[aria-label*="proceed" i], button[aria-label*="continue" i], yt-playability-error-supported-renderers button, ytd-enforcement-message-view-model button'
-            );
-            confirmBtns.forEach(b => { try { b.click(); } catch(e) {} });
+            // Real media error on video element
+            const mediaError = Boolean(v?.error);
 
-            // Check if there is a fatal playback error
-            const errEl = document.querySelector('ytd-player-error-message-renderer:not([hidden]), #error-screen:not([hidden])');
-            const hasError = Boolean(
-              v.error ||
-              (errEl && errEl.offsetParent !== null && errEl.innerText && errEl.innerText.trim().length > 15 && (!v.currentTime || v.currentTime === 0))
-            );
+            // Error screen check: only if visibly rendered on screen
+            const errEl = document.querySelector('ytd-player-error-message-renderer, #error-screen');
+            let isDomErrorVisible = false;
+            if (errEl) {
+              const style = window.getComputedStyle(errEl);
+              isDomErrorVisible = style.display !== 'none' && style.visibility !== 'hidden' && (errEl.innerText || '').trim().length > 15;
+            }
 
             return {
+              isReady,
+              playerState,
               videoId,
               adActive,
-              hasError,
-              currentTime: v.currentTime || 0,
-              duration: v.duration || 0,
-              paused: v.paused,
-              ended: v.ended,
-              seeking: v.seeking,
-              readyState: v.readyState
+              mediaError,
+              isDomErrorVisible,
+              currentTime: v?.currentTime || 0,
+              duration: v?.duration || 0,
+              paused: v ? v.paused : true,
+              ended: v ? v.ended : false,
+              readyState: v ? v.readyState : 0,
             };
           } catch (e) {
             return null;
@@ -297,6 +293,46 @@ class PlayerService {
       try {
         const data = await this.webview.executeJavaScript(queryScript);
         if (data) {
+          // 1. Player readiness lifecycle transition
+          if (data.isReady && !this.isPlayerReady) {
+            this.isPlayerReady = true;
+
+            // If a track was queued during cold start, dispatch it now!
+            if (this.pendingTrack && this.userWantsPlaying) {
+              const target = this.pendingTrack;
+              this.pendingTrack = null;
+              this.trackStartTime = Date.now();
+              const initPlayScript = `
+                (() => {
+                  try {
+                    window.__userWantsPlaying = true;
+                    const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+                    const v = document.querySelector('video');
+                    if (p && typeof p.loadVideoById === 'function') {
+                      const currentId = p.getVideoData ? p.getVideoData()?.video_id : null;
+                      if (currentId === '${target.videoId}') {
+                        p.seekTo?.(0, true);
+                        p.playVideo?.();
+                      } else {
+                        p.loadVideoById('${target.videoId}');
+                        p.playVideo?.();
+                      }
+                      if (v) {
+                        v.muted = ${this.status.isMuted ? 'true' : 'false'};
+                        v.volume = ${this.status.volume / 100};
+                        v.play().catch(() => {});
+                      }
+                    }
+                  } catch(e) {}
+                })()
+              `;
+              void this.webview.executeJavaScript(initPlayScript).catch(() => {});
+            }
+          }
+
+          if (!this.status.currentTrack) return;
+
+          // 2. Active ad segment handling
           if (data.adActive) {
             this.status = {
               ...this.status,
@@ -307,32 +343,66 @@ class PlayerService {
             return;
           }
 
-          if (data.hasError && data.currentTime === 0) {
+          // 3. Error handling: Media errors trigger immediately; DOM errors require 3 consecutive cycles
+          if (data.mediaError) {
             this.status = {
               ...this.status,
               isPlaying: false,
               isBuffering: false,
-              error: 'Không thể phát track này do giới hạn bản quyền của YouTube.',
+              error: 'Không thể phát track này do lỗi stream từ YouTube.',
             };
             this.notify();
             return;
           }
 
-          // Video ID mismatch check after 4s (if player failed to switch)
-          const timeSinceTrackStart = Date.now() - this.trackStartTime;
-          if (
-            data.videoId &&
-            this.status.currentTrack &&
-            data.videoId !== this.status.currentTrack.videoId &&
-            timeSinceTrackStart > 4000
-          ) {
-            const targetUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(this.status.currentTrack.videoId)}&vq=small`;
-            void this.webview.loadURL(targetUrl).catch(() => {});
-            return;
+          if (this.isPlayerReady && data.isDomErrorVisible && data.currentTime === 0) {
+            this.errorStreakCounter++;
+            if (this.errorStreakCounter >= 3) {
+              this.status = {
+                ...this.status,
+                isPlaying: false,
+                isBuffering: false,
+                error: 'Không thể phát track này do giới hạn bản quyền của YouTube.',
+              };
+              this.notify();
+              return;
+            }
+          } else {
+            this.errorStreakCounter = 0;
           }
 
-          const isVideoPlaying = !data.paused && !data.ended;
-          const isBuffering = this.userWantsPlaying && (!isVideoPlaying || data.readyState < 3);
+          // 4. Runtime playback intent synchronization
+          if (!this.userWantsPlaying) {
+            // User wants paused: if video or movie_player is running, force pause
+            if (!data.paused || data.playerState === 1) {
+              this.webview.executeJavaScript(`
+                (() => {
+                  try {
+                    window.__userWantsPlaying = false;
+                    document.querySelector('video')?.pause();
+                    document.getElementById('movie_player')?.pauseVideo?.();
+                  } catch(e){}
+                })()
+              `).catch(() => {});
+            }
+          } else if (this.userWantsPlaying && data.paused && !data.ended && data.isReady) {
+            // User wants playing: resume if player is unstarted (-1) or paused (2) and not buffering (3)
+            if (data.playerState === -1 || data.playerState === 2) {
+              this.webview.executeJavaScript(`
+                (() => {
+                  try {
+                    if (window.__userWantsPlaying) {
+                      document.getElementById('movie_player')?.playVideo?.();
+                      document.querySelector('video')?.play().catch(() => {});
+                    }
+                  } catch(e){}
+                })()
+              `).catch(() => {});
+            }
+          }
+
+          const isVideoPlaying = !data.paused && !data.ended && (data.playerState === 1 || data.currentTime > 0);
+          const isBuffering = this.userWantsPlaying && (!isVideoPlaying || data.readyState < 3 || data.playerState === 3);
 
           this.status = {
             ...this.status,
@@ -344,7 +414,8 @@ class PlayerService {
           };
           this.notify();
 
-          // Natural track ended check (MUST only fire on full songs, never on ad segments)
+          // 5. Natural track ended check (MUST only fire on full songs, never on ad segments)
+          const timeSinceTrackStart = Date.now() - this.trackStartTime;
           if (timeSinceTrackStart > 3500 && !data.adActive && data.duration > 45 && data.currentTime > 30) {
             const isNearEnd =
               data.currentTime >= data.duration - 1.2 ||
@@ -376,6 +447,7 @@ class PlayerService {
     this.isEndedHandled = false;
     this.userWantsPlaying = true;
     this.trackStartTime = Date.now();
+    this.errorStreakCounter = 0;
     this.status = {
       ...this.status,
       currentTrack: track,
@@ -395,44 +467,57 @@ class PlayerService {
     }
 
     if (this.webview) {
-      // 1. Fast in-player switch without reloading the page
-      try {
-        const switchScript = `
-          (() => {
-            try {
-              const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
-              const v = document.querySelector('video');
-              if (p && typeof p.loadVideoById === 'function') {
-                p.loadVideoById('${track.videoId}');
-                if (v) {
-                  v.muted = ${this.status.isMuted};
-                  v.volume = ${this.status.volume / 100};
+      // 1. Fast in-player switch if player engine is already initialized
+      if (this.isPlayerReady) {
+        try {
+          const switchScript = `
+            (() => {
+              try {
+                window.__userWantsPlaying = true;
+                const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+                const v = document.querySelector('video');
+                if (p && typeof p.loadVideoById === 'function') {
+                  const currentId = p.getVideoData ? p.getVideoData()?.video_id : null;
+                  if (currentId === '${track.videoId}') {
+                    // Replay same song: seek to start and play
+                    p.seekTo?.(0, true);
+                    p.playVideo?.();
+                  } else {
+                    p.loadVideoById('${track.videoId}');
+                    p.playVideo?.();
+                  }
+                  if (v) {
+                    v.muted = ${this.status.isMuted ? 'true' : 'false'};
+                    v.volume = ${this.status.volume / 100};
+                    v.play().catch(() => {});
+                  }
+                  // Auto-confirm warning if present immediately
+                  setTimeout(() => {
+                    document.querySelectorAll('#confirm-button, ytd-button-renderer#confirm-button button, button[aria-label*="proceed" i]').forEach(b => {
+                      try { b.click(); } catch(e) {}
+                    });
+                  }, 200);
+                  return true;
                 }
-                p.playVideo?.();
-                v?.play()?.catch(() => {});
-                // Auto-confirm warning if present immediately
-                setTimeout(() => {
-                  document.querySelectorAll('#confirm-button, ytd-button-renderer#confirm-button button, button[aria-label*="proceed" i]').forEach(b => {
-                    try { b.click(); } catch(e) {}
-                  });
-                }, 200);
-                return true;
+                return false;
+              } catch (e) {
+                return false;
               }
-              return false;
-            } catch (e) {
-              return false;
-            }
-          })();
-        `;
-        const switched = await this.webview.executeJavaScript(switchScript);
-        if (switched) {
-          return;
-        }
-      } catch {}
+            })();
+          `;
+          const switched = await this.webview.executeJavaScript(switchScript);
+          if (switched) {
+            return;
+          }
+        } catch {}
+      }
 
-      // 2. Fallback to loadURL if player is not initialized yet
+      // 2. Cold start or player engine not ready yet:
+      this.pendingTrack = track;
+      this.isPlayerReady = false;
+
       try {
-        const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(track.videoId)}&vq=small`;
+        const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(track.videoId)}&autoplay=1&vq=small`;
         void this.webview.loadURL(watchUrl).catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error);
           if (!message.includes('ERR_ABORTED')) {
@@ -459,9 +544,17 @@ class PlayerService {
 
     if (this.webview) {
       this.webview
-        .executeJavaScript(
-          '(() => { try { document.querySelector("video")?.play(); document.getElementById("movie_player")?.playVideo?.(); } catch(e){} })()'
-        )
+        .executeJavaScript(`
+          (() => {
+            try {
+              window.__userWantsPlaying = true;
+              const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+              p?.playVideo?.();
+              const v = document.querySelector('video');
+              if (v && v.paused) v.play().catch(() => {});
+            } catch(e){}
+          })()
+        `)
         .catch(() => {});
     }
   }
@@ -473,9 +566,17 @@ class PlayerService {
 
     if (this.webview) {
       this.webview
-        .executeJavaScript(
-          '(() => { try { document.querySelector("video")?.pause(); document.getElementById("movie_player")?.pauseVideo?.(); } catch(e){} })()'
-        )
+        .executeJavaScript(`
+          (() => {
+            try {
+              window.__userWantsPlaying = false;
+              const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+              p?.pauseVideo?.();
+              const v = document.querySelector('video');
+              if (v) v.pause();
+            } catch(e){}
+          })()
+        `)
         .catch(() => {});
     }
   }
@@ -494,7 +595,18 @@ class PlayerService {
 
     if (this.webview) {
       this.webview
-        .executeJavaScript(`(() => { try { const v = document.querySelector('video'); if (v) v.currentTime = ${seconds}; } catch(e){} })()`)
+        .executeJavaScript(`
+          (() => {
+            try {
+              const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+              if (p && typeof p.seekTo === 'function') {
+                p.seekTo(${seconds}, true);
+              }
+              const v = document.querySelector('video');
+              if (v) v.currentTime = ${seconds};
+            } catch(e){}
+          })()
+        `)
         .catch(() => {});
     }
   }
@@ -507,9 +619,22 @@ class PlayerService {
 
     if (this.webview) {
       this.webview
-        .executeJavaScript(
-          `(() => { try { const v = document.querySelector('video'); if (v) { v.volume = ${clamped / 100}; v.muted = false; } } catch(e){} })()`
-        )
+        .executeJavaScript(`
+          (() => {
+            try {
+              const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+              if (p && typeof p.setVolume === 'function') {
+                p.setVolume(${clamped});
+                if (${clamped === 0}) p.mute?.(); else p.unMute?.();
+              }
+              const v = document.querySelector('video');
+              if (v) {
+                v.volume = ${clamped / 100};
+                v.muted = ${clamped === 0};
+              }
+            } catch(e){}
+          })()
+        `)
         .catch(() => {});
     }
   }
@@ -521,7 +646,18 @@ class PlayerService {
 
     if (this.webview) {
       this.webview
-        .executeJavaScript(`(() => { try { const v = document.querySelector('video'); if (v) v.muted = ${nextMuted}; } catch(e){} })()`)
+        .executeJavaScript(`
+          (() => {
+            try {
+              const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+              if (p) {
+                if (${nextMuted}) p.mute?.(); else p.unMute?.();
+              }
+              const v = document.querySelector('video');
+              if (v) v.muted = ${nextMuted};
+            } catch(e){}
+          })()
+        `)
         .catch(() => {});
     }
   }
