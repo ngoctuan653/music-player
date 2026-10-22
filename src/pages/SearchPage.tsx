@@ -116,6 +116,33 @@ export const SearchPage: React.FC<SearchPageProps> = ({
         )}
       </div>
 
+      {/* Quick Search / Genre Tags */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs">
+        {[
+          { label: 'Tất cả thịnh hành', q: '' },
+          { label: 'V-Pop Hot', q: 'vpop official music video' },
+          { label: 'K-Pop Hits', q: 'kpop official mv' },
+          { label: 'US-UK Viral', q: 'billboard hot 100 official music video' },
+          { label: 'Lofi Chill', q: 'lofi hip hop beats' },
+          { label: 'Nhạc Trẻ Remix', q: 'nhac tre remix hot tiktok' },
+        ].map((tag) => (
+          <button
+            key={tag.label}
+            onClick={() => {
+              setQuery(tag.q);
+              performSearch(tag.q);
+            }}
+            className={`px-3 py-1.5 rounded-full font-medium transition-all shrink-0 border ${
+              (query === tag.q || (!query && tag.q === ''))
+                ? 'bg-white text-black border-white shadow-sm'
+                : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 border-white/[0.08]'
+            }`}
+          >
+            {tag.label}
+          </button>
+        ))}
+      </div>
+
       {/* Error notification banner */}
       {errorMsg && (
         <div className="bg-red-950/30 border border-red-900/40 rounded-lg p-3 flex items-center gap-2.5 text-xs text-red-300 font-mono">
@@ -126,11 +153,13 @@ export const SearchPage: React.FC<SearchPageProps> = ({
 
       {/* Results Header */}
       <div className="flex items-center justify-between text-xs font-mono text-zinc-400 border-b border-white/[0.08] pb-2">
-        <span className="uppercase tracking-wider font-semibold">SEARCH RESULTS ({results.length})</span>
+        <span className="uppercase tracking-wider font-semibold">
+          {query.trim() ? `KẾT QUẢ TÌM KIẾM (${results.length})` : `BẢNG XẾP HẠNG & THỊNH HÀNH (${results.length})`}
+        </span>
         {isLoading && (
           <span className="flex items-center gap-2 text-[#fc3c44] text-xs">
             <span className="w-2.5 h-2.5 border-2 border-[#fc3c44] border-t-transparent rounded-full animate-spin" />
-            SEARCHING...
+            ĐANG TẢI...
           </span>
         )}
       </div>

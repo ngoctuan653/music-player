@@ -9,13 +9,15 @@ import { PlayerBar } from './components/PlayerBar/PlayerBar';
 import { EmbeddedPlayer } from './components/EmbeddedPlayer/EmbeddedPlayer';
 import { AddToPlaylistModal } from './components/PlaylistModal/AddToPlaylistModal';
 import { CommentsDrawer } from './components/CommentsDrawer/CommentsDrawer';
-import { FocusModeVinylView } from './components/FocusMode/FocusModeVinylView';
+import { FocusMode } from './components/FocusMode/FocusMode';
 import { HomePage } from './pages/HomePage';
 import { SearchPage } from './pages/SearchPage';
 import { QueuePage } from './pages/QueuePage';
 import { PlaylistsPage } from './pages/PlaylistsPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { SettingsPage } from './pages/SettingsPage';
+
+import { mediaSessionService } from './services/mediaSessionService';
 
 export const App: React.FC = () => {
   const [activePage, setActivePage] = useState<ActivePage>('home');
@@ -29,6 +31,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     LocalStorageManager.init();
+    mediaSessionService.init();
     document.documentElement.dataset.theme = 'dark';
 
     // Subscribe to current track
@@ -170,7 +173,7 @@ export const App: React.FC = () => {
 
       {/* Vinyl Focus Mode Fullscreen Modal */}
       {isFocusModeOpen && currentTrack && (
-        <FocusModeVinylView
+        <FocusMode
           isOpen={isFocusModeOpen}
           onClose={() => setIsFocusModeOpen(false)}
         />

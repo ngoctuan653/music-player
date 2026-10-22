@@ -647,6 +647,18 @@ export class YouTubeSearchService {
   static async search(query: string, apiKey?: string): Promise<{ items: SearchResultItem[]; error?: string; source?: 'api' | 'direct' }> {
     const q = query.trim();
     if (!q) {
+      try {
+        const liveTrending = await this.getExploreTracks('trending', apiKey);
+        if (liveTrending && liveTrending.length > 0) {
+          return { items: liveTrending, source: 'direct' };
+        }
+        const directLive = await this.searchDirect('official music video hot trending');
+        if (directLive && directLive.length > 0) {
+          return { items: directLive.filter(isIndividualSong), source: 'direct' };
+        }
+      } catch (err) {
+        console.warn('Failed to fetch live trending for search:', err);
+      }
       return { items: CURATED_DEMO_TRACKS, source: 'direct' };
     }
 

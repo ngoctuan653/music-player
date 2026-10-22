@@ -168,6 +168,11 @@ const adBlockPatterns = [
   '*://*.pubmatic.com/*',
   '*://*.taboola.com/*',
   '*://*.outbrain.com/*',
+  // YouTube in-stream ad manifests, tracking and midroll signals
+  '*://*.youtube.com/api/stats/ads*',
+  '*://*.youtube.com/pagead/*',
+  '*://*.youtube.com/ptracking*',
+  '*://*.youtube.com/get_midroll_info*',
 ];
 
 const attachedSessions = new WeakSet<session.Session>();
@@ -319,9 +324,67 @@ async function createWindow() {
     show: false,
   });
 
+  // Handle multimedia & Bluetooth headset commands via Windows WM_APPCOMMAND
+  mainWindow.on('app-command', (_event, cmd) => {
+    switch (cmd) {
+      case 'media-play-pause':
+        mainWindow?.webContents.send('media-control', 'togglePlayPause');
+        break;
+      case 'media-play':
+        mainWindow?.webContents.send('media-control', 'play');
+        break;
+      case 'media-pause':
+      case 'media-stop':
+        mainWindow?.webContents.send('media-control', 'pause');
+        break;
+      case 'media-next-track':
+        mainWindow?.webContents.send('media-control', 'nextTrack');
+        break;
+      case 'media-previous-track':
+        mainWindow?.webContents.send('media-control', 'prevTrack');
+        break;
+      case 'volume-up':
+        mainWindow?.webContents.send('media-control', 'volumeUp');
+        break;
+      case 'volume-down':
+        mainWindow?.webContents.send('media-control', 'volumeDown');
+        break;
+      case 'volume-mute':
+        mainWindow?.webContents.send('media-control', 'toggleMute');
+        break;
+    }
+  });
+
+  const handleMediaInput = (event: any, input: any) => {
+    if (input.type !== 'keyDown') return;
+    const key = input.key;
+    if (key === 'MediaPlayPause') {
+      mainWindow?.webContents.send('media-control', 'togglePlayPause');
+      event.preventDefault();
+    } else if (key === 'MediaTrackNext') {
+      mainWindow?.webContents.send('media-control', 'nextTrack');
+      event.preventDefault();
+    } else if (key === 'MediaTrackPrevious') {
+      mainWindow?.webContents.send('media-control', 'prevTrack');
+      event.preventDefault();
+    } else if (key === 'MediaStop') {
+      mainWindow?.webContents.send('media-control', 'pause');
+      event.preventDefault();
+    } else if (key === 'AudioVolumeUp') {
+      mainWindow?.webContents.send('media-control', 'volumeUp');
+    } else if (key === 'AudioVolumeDown') {
+      mainWindow?.webContents.send('media-control', 'volumeDown');
+    } else if (key === 'AudioVolumeMute') {
+      mainWindow?.webContents.send('media-control', 'toggleMute');
+    }
+  };
+
+  mainWindow.webContents.on('before-input-event', handleMediaInput);
+
   mainWindow.webContents.on('did-attach-webview' as any, (_e: any, guestContents: any) => {
     try {
       guestContents.setBackgroundThrottling(false);
+      guestContents.on('before-input-event', handleMediaInput);
     } catch {}
   });
 
@@ -470,6 +533,9 @@ function registerMediaShortcuts() {
     });
     globalShortcut.register('MediaPreviousTrack', () => {
       mainWindow?.webContents.send('media-control', 'prevTrack');
+    });
+    globalShortcut.register('MediaStop', () => {
+      mainWindow?.webContents.send('media-control', 'pause');
     });
   } catch (err) {
     console.warn('Could not register media shortcuts:', err);

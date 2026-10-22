@@ -39,9 +39,6 @@ export const TitleBar: React.FC = () => {
         <span className="font-semibold text-[11px] text-white tracking-wide font-sans">
           Music
         </span>
-        <span className="text-[9px] font-mono font-medium text-[#fc3c44] bg-[#fc3c44]/15 px-1.5 py-0.2 rounded border border-[#fc3c44]/30">
-          LOSSLESS
-        </span>
       </div>
 
       {/* Right: Window Controls */}

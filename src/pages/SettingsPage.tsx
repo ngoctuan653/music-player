@@ -17,7 +17,8 @@ import {
   Copy, 
   Activity, 
   ExternalLink,
-  RotateCw
+  RotateCw,
+  Disc
 } from 'lucide-react';
 import { AppSettings } from '../models/types';
 import { LocalStorageManager } from '../storage/localStore';
@@ -115,6 +116,17 @@ export const SettingsPage: React.FC = () => {
     const updated: AppSettings = {
       ...settings,
       apiKey: apiKeyInput.trim(),
+    };
+    LocalStorageManager.saveSettings(updated);
+    setSettings(updated);
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2500);
+  };
+
+  const handleFocusModeStyleChange = (style: 'turntable' | 'sleeve') => {
+    const updated: AppSettings = {
+      ...settings,
+      focusModeStyle: style,
     };
     LocalStorageManager.saveSettings(updated);
     setSettings(updated);
@@ -281,6 +293,74 @@ export const SettingsPage: React.FC = () => {
           <span className="shrink-0 rounded-md border border-[#fc3c44]/30 bg-[#fc3c44]/15 px-3 py-1 text-xs text-[#fc3c44] font-mono font-medium">
             APPLE MUSIC DARK
           </span>
+        </div>
+      </section>
+
+      {/* Focus Mode Display Option */}
+      <section className="bg-[#1c1c1e] border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center shrink-0">
+              <Disc className="w-5 h-5 text-[#fc3c44]" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-zinc-100">Chế độ Focus Mode (Đĩa Than)</h2>
+              <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                Tùy chọn phong cách hiển thị toàn khung hình khi bấm vào đĩa than hoặc thumbnail bài hát ở thanh dưới.
+              </p>
+            </div>
+          </div>
+          <span className="shrink-0 rounded-md border border-white/[0.12] bg-white/[0.05] px-2.5 py-1 text-[11px] text-zinc-300 font-mono">
+            {settings.focusModeStyle === 'turntable' ? 'OPTION 1' : 'OPTION 2'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          {/* Option 1: Turntable Deck */}
+          <button
+            type="button"
+            onClick={() => handleFocusModeStyleChange('turntable')}
+            className={`p-4 rounded-xl border text-left transition-all relative flex flex-col justify-between ${
+              settings.focusModeStyle === 'turntable'
+                ? 'bg-[#252528] border-[#fc3c44] ring-1 ring-[#fc3c44] shadow-md'
+                : 'bg-[#18181a] border-white/[0.08] hover:border-white/[0.18] hover:bg-[#202022]'
+            }`}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-zinc-100">Option 1: Mâm Đĩa Than Bàn Xoay</span>
+                {settings.focusModeStyle === 'turntable' && (
+                  <span className="w-2 h-2 rounded-full bg-[#fc3c44]" />
+                )}
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-relaxed">
+                Toàn cảnh mâm xoay đĩa than vinyl với cần gạt kim phát nhạc (tonearm) hạ xuống xoay đĩa, phong cách máy hát cổ điển.
+              </p>
+            </div>
+          </button>
+
+          {/* Option 2: Album Sleeve + Sliding Vinyl */}
+          <button
+            type="button"
+            onClick={() => handleFocusModeStyleChange('sleeve')}
+            className={`p-4 rounded-xl border text-left transition-all relative flex flex-col justify-between ${
+              settings.focusModeStyle !== 'turntable'
+                ? 'bg-[#252528] border-[#fc3c44] ring-1 ring-[#fc3c44] shadow-md'
+                : 'bg-[#18181a] border-white/[0.08] hover:border-white/[0.18] hover:bg-[#202022]'
+            }`}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-zinc-100">Option 2: Bìa Album & Đĩa Trượt (Khuyên dùng)</span>
+                {settings.focusModeStyle !== 'turntable' && (
+                  <span className="w-2 h-2 rounded-full bg-[#fc3c44]" />
+                )}
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-relaxed">
+                Bìa album vuông đặt trên bàn, đĩa than vinyl trích màu chủ đạo tự động trượt hé ra từ sau bìa xoay 33⅓ rpm (Chuẩn bìa vinyl tối giản).
+              </p>
+            </div>
+          </button>
         </div>
       </section>
 

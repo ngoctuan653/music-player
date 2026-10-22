@@ -126,18 +126,18 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       )}
 
       {/* Left: Track Information */}
-      <div className="flex items-center gap-3 w-[30%] min-w-0 max-w-[280px] shrink-0">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0 max-w-[140px] sm:max-w-[260px] shrink-0">
         {currentTrack ? (
           <>
             <div 
               onClick={onOpenFocusMode}
-              className="w-11 h-11 rounded-md bg-[#2c2c2e] overflow-hidden shrink-0 relative border border-white/[0.06] shadow-sm cursor-pointer group hover:ring-2 hover:ring-[#fc3c44]/60 transition-all"
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-md bg-[#2c2c2e] overflow-hidden shrink-0 relative border border-white/[0.06] shadow-sm cursor-pointer group hover:ring-2 hover:ring-[#fc3c44]/60 transition-all"
               title="Mở chế độ Focus Đĩa Than (Vinyl Mode)"
             >
               <img
                 src={currentTrack.thumbnailUrl}
                 alt=""
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                className="w-full h-full object-cover scale-[1.34] group-hover:scale-[1.45] transition-transform duration-300"
               />
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[1px]">
                 <Disc className="w-5 h-5 text-white animate-spin" style={{ animationDuration: '4s' }} />
@@ -162,7 +162,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
             <button
               onClick={handleToggleFavorite}
-              className={`p-1.5 rounded transition-colors shrink-0 ${
+              className={`p-1.5 rounded transition-colors shrink-0 hidden sm:inline-flex ${
                 isFavorite
                   ? 'text-[#fc3c44]'
                   : 'text-zinc-500 hover:text-zinc-300'
@@ -181,12 +181,12 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       </div>
 
       {/* Center: Controls & Scrubber */}
-      <div className="flex flex-col items-center flex-1 max-w-[480px] min-w-0 px-2">
+      <div className="flex flex-col items-center flex-1 max-w-[480px] min-w-0 px-1 sm:px-2">
         {/* Buttons */}
-        <div className="flex items-center gap-4 mb-1">
+        <div className="flex items-center gap-2 sm:gap-4 mb-1">
           <button
             onClick={() => playerService.toggleShuffle()}
-            className={`p-1 rounded transition-colors ${
+            className={`p-1 rounded transition-colors hidden sm:inline-flex ${
               status.isShuffled ? 'text-[#fc3c44]' : 'text-zinc-400 hover:text-white'
             }`}
             title={status.isShuffled ? 'Disable Shuffle' : 'Enable Shuffle'}
@@ -231,7 +231,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
           <button
             onClick={cycleRepeat}
-            className={`p-1 rounded transition-colors ${
+            className={`p-1 rounded transition-colors hidden sm:inline-flex ${
               status.repeatMode !== 'off' ? 'text-[#fc3c44]' : 'text-zinc-400 hover:text-white'
             }`}
             title={`Repeat: ${status.repeatMode}`}
@@ -245,8 +245,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         </div>
 
         {/* Needle Scrubber */}
-        <div className="w-full flex items-center gap-2.5 text-[10px] font-mono text-zinc-400">
-          <span className="w-8 text-right font-medium text-zinc-400 shrink-0">{formatTime(displayTime)}</span>
+        <div className="w-full flex items-center gap-1.5 sm:gap-2.5 text-[10px] font-mono text-zinc-400">
+          <span className="w-7 sm:w-8 text-right font-medium text-zinc-400 shrink-0">{formatTime(displayTime)}</span>
           <div className="relative flex-1 flex items-center group h-2 cursor-pointer min-w-0">
             <div className="w-full h-[3px] bg-white/[0.12] rounded-full overflow-hidden">
               <div
@@ -269,14 +269,16 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
             />
           </div>
-          <span className="w-8 font-medium text-zinc-400 shrink-0">{formatTime(status.duration)}</span>
+          <span className="w-7 sm:w-8 font-medium text-zinc-400 shrink-0">{formatTime(status.duration)}</span>
         </div>
       </div>
 
       {/* Right: Audio Output Bus & Controls */}
-      <div className="audio-output-dock flex items-center justify-end gap-1.5 w-[30%] min-w-0 max-w-[320px] shrink-0">
-        {/* Audio Output Device Selector */}
-        <AudioOutputSelector />
+      <div className="audio-output-dock flex items-center justify-end gap-1 sm:gap-1.5 shrink-0">
+        {/* Audio Output Device Selector (Desktop only) */}
+        <div className="hidden md:flex items-center">
+          <AudioOutputSelector />
+        </div>
 
         {/* View Queue button */}
         <button
@@ -287,11 +289,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           <ListMusic className="w-3.5 h-3.5" />
         </button>
 
-        {/* Comments drawer toggle */}
+        {/* Comments drawer toggle (Wide screens only) */}
         <button
           onClick={onToggleComments}
           disabled={!currentTrack}
-          className={`p-1.5 rounded transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
+          className={`p-1.5 rounded transition-colors shrink-0 hidden lg:inline-flex disabled:opacity-30 disabled:cursor-not-allowed ${
             isCommentsOpen
               ? 'text-[#fc3c44] bg-[#fc3c44]/15'
               : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
@@ -301,10 +303,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           <MessageSquare className="w-3.5 h-3.5" />
         </button>
 
-        {/* Mini video toggle */}
+        {/* Mini video toggle (Desktop only) */}
         <button
           onClick={onToggleMiniVideo}
-          className={`p-1.5 rounded transition-colors shrink-0 ${
+          className={`p-1.5 rounded transition-colors shrink-0 hidden md:inline-flex ${
             isMiniVideoOpen
               ? 'text-[#fc3c44] bg-[#fc3c44]/15'
               : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
@@ -314,12 +316,23 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           <Video className="w-3.5 h-3.5" />
         </button>
 
-        {/* Compact Volume */}
-        <div className="hidden sm:flex items-center gap-1.5 pl-1.5 border-l border-white/[0.08] shrink-0">
+        {/* Focus Mode Vinyl toggle */}
+        <button
+          onClick={onOpenFocusMode}
+          disabled={!currentTrack}
+          className="p-1.5 text-zinc-400 hover:text-white rounded hover:bg-white/[0.04] transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed group"
+          title="Mở Chế độ Focus Đĩa Than (Focus Mode)"
+        >
+          <Disc className={`w-3.5 h-3.5 group-hover:text-[#fc3c44] transition-colors ${status.isPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '4s' }} />
+        </button>
+
+        {/* Compact Volume with Vertical Hover Popup */}
+        <div className="relative group flex items-center pl-1.5 border-l border-white/[0.08] shrink-0">
           <button
             onClick={() => playerService.toggleMute()}
-            className="text-zinc-400 hover:text-white transition-colors p-0.5"
-            title={status.isMuted ? 'Unmute' : 'Mute'}
+            onDoubleClick={() => playerService.setVolume(80)}
+            className="p-1.5 text-zinc-400 hover:text-white rounded hover:bg-white/[0.04] transition-colors shrink-0"
+            title={status.isMuted ? 'Unmute (Double click: 80%)' : 'Mute (Double click: 80%)'}
           >
             {status.isMuted || status.volume === 0 ? (
               <VolumeX className="w-3.5 h-3.5 text-[#fc3c44]" />
@@ -329,19 +342,32 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               <Volume2 className="w-3.5 h-3.5" />
             )}
           </button>
-          <div className="flex items-center gap-1">
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={status.isMuted ? 0 : status.volume}
-              onChange={handleVolumeChange}
-              className="w-16 h-1 bg-white/[0.15] accent-[#fc3c44] rounded-full cursor-pointer"
-              title={`Volume: ${status.isMuted ? 0 : status.volume}%`}
-            />
-            <span className="text-[9px] font-mono text-zinc-400 w-6 tabular-nums text-right">
-              {status.isMuted ? '0%' : `${status.volume}%`}
-            </span>
+
+          {/* Vertical Slider Capsule (Appears on Hover) */}
+          <div 
+            className="absolute bottom-full mb-3 right-0 sm:left-1/2 sm:-translate-x-1/2 p-2.5 rounded-2xl bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.12] shadow-[0_12px_28px_rgba(0,0,0,0.85)] flex flex-col items-center opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-200 z-50"
+          >
+            <div className="absolute -bottom-3 inset-x-0 h-3" />
+            <div 
+              className="relative w-5 h-24 flex items-center justify-center cursor-pointer"
+              onDoubleClick={() => playerService.setVolume(80)}
+              title="Volume (Double click: 80%)"
+            >
+              <div className="w-1.5 h-20 bg-white/[0.15] rounded-full overflow-hidden relative flex flex-col justify-end">
+                <div
+                  className="w-full bg-[#fc3c44] rounded-full transition-all duration-75"
+                  style={{ height: `${status.isMuted ? 0 : status.volume}%` }}
+                />
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={status.isMuted ? 0 : status.volume}
+                onChange={handleVolumeChange}
+                className="absolute w-20 h-5 -rotate-90 origin-center opacity-0 cursor-pointer"
+              />
+            </div>
           </div>
         </div>
       </div>

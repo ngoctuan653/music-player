@@ -7,25 +7,35 @@ import {
   SkipForward, 
   Shuffle, 
   Repeat, 
+  Volume1,
   Volume2, 
   VolumeX, 
-  Heart,
-  Disc
+  Heart
 } from 'lucide-react';
 import { PlayerStatus, RepeatMode } from '../../models/types';
 import { playerService } from '../../services/playerService';
 import { playlistService } from '../../services/playlistService';
+import { useDominantColor } from '../../hooks/useDominantColor';
+import { useAlbumArt } from '../../hooks/useAlbumArt';
+import { MarqueeText } from './MarqueeText';
 
 interface FocusModeVinylViewProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export const FocusModeVinylView: React.FC<FocusModeVinylViewProps> = ({ isOpen, onClose }) => {
+export const FocusModeVinylView: React.FC<FocusModeVinylViewProps> = ({ 
+  isOpen, 
+  onClose 
+}) => {
   const [status, setStatus] = useState<PlayerStatus>(playerService.getStatus());
   const [isFavorite, setIsFavorite] = useState<boolean>(false);
   const [isDraggingSlider, setIsDraggingSlider] = useState<boolean>(false);
   const [dragTime, setDragTime] = useState<number>(0);
+
+  const activeTrack = status.currentTrack;
+  const { colors } = useDominantColor(activeTrack?.thumbnailUrl);
+  const albumArt = useAlbumArt(activeTrack?.videoId, activeTrack?.thumbnailUrl);
 
   useEffect(() => {
     const unsub = playerService.subscribe((newStatus) => {
@@ -114,44 +124,47 @@ export const FocusModeVinylView: React.FC<FocusModeVinylViewProps> = ({ isOpen, 
   const progressPercent = status.duration > 0 ? (displayTime / status.duration) * 100 : 0;
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-[#070709] select-none text-white overflow-hidden animate-in fade-in duration-300">
-      {/* Subtle Dynamic Ambient Gradient Background */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {/* Soft Blurred Ambient Backdrop */}
-        <div 
-          className="absolute -top-1/4 -left-1/4 w-[150%] h-[150%] opacity-25 blur-3xl transition-all duration-1000 scale-110"
-          style={{
-            backgroundImage: `radial-gradient(circle at 45% 40%, rgba(220, 38, 38, 0.45), transparent 45%), radial-gradient(circle at 65% 55%, rgba(99, 102, 241, 0.35), transparent 45%), radial-gradient(circle at 50% 50%, #151518, #070709 75%)`,
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/85" />
-      </div>
+    <div className="fixed inset-0 z-[100] flex flex-col bg-[#08080a] select-none text-white overflow-hidden animate-in fade-in duration-300">
+      {/* Seamless Full-Bleed Ambient Background (Single unified GPU canvas, 100% continuous fade, zero lines or seams) */}
+      <div 
+        className="absolute inset-0 pointer-events-none select-none transition-all duration-1000"
+        style={{
+          backgroundColor: '#070709',
+          backgroundImage: `
+            radial-gradient(circle at 50% 44%, ${colors.glowColor} 0%, transparent 64%),
+            radial-gradient(ellipse at 70% 60%, ${colors.ambientLight || colors.glowColor} 0%, transparent 58%),
+            radial-gradient(ellipse at 30% 65%, ${colors.labelBg} 0%, transparent 58%),
+            radial-gradient(circle at 50% 50%, #0d0d12 0%, #070709 100%)
+          `,
+        }}
+      />
+      {/* Soft Vignette Overlay: Ensures completely smooth, natural fade around all edges */}
+      <div 
+        className="absolute inset-0 pointer-events-none select-none"
+        style={{
+          background: 'radial-gradient(ellipse at 50% 50%, transparent 45%, rgba(5, 5, 7, 0.6) 100%)',
+        }}
+      />
 
-      {/* Top Header Bar */}
-      <header className="relative z-10 h-14 px-4 sm:px-6 flex items-center justify-between border-b border-white/[0.06] backdrop-blur-md shrink-0">
+      {/* Top Floating Header Bar (Completely transparent, zero borders or layer cutoffs) */}
+      <header className="relative h-14 px-4 sm:px-6 flex items-center justify-between shrink-0 bg-transparent">
         <button
           onClick={onClose}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] border border-white/[0.08] text-zinc-300 hover:text-white transition-all text-xs font-medium shadow-sm hover:scale-105 active:scale-95 shrink-0"
-          title="Thu nhỏ về giao diện chính (Esc)"
+          className="group flex items-center h-8 px-2.5 rounded-full bg-white/[0.08] hover:bg-white/[0.18] backdrop-blur-md border border-white/[0.1] text-zinc-200 hover:text-white transition-all duration-300 text-xs font-medium shadow-sm active:scale-95 shrink-0 overflow-hidden"
+          title="Minimize (Esc)"
         >
-          <ChevronDown className="w-4 h-4 text-zinc-300" />
-          <span>Thu nhỏ</span>
-          <span className="hidden sm:inline text-[10px] font-mono text-zinc-500 bg-black/40 px-1 rounded ml-0.5">Esc</span>
-        </button>
-
-        <div className="flex items-center gap-2 text-xs font-mono text-zinc-400 truncate px-2">
-          <Disc className={`w-3.5 h-3.5 text-[#fc3c44] shrink-0 ${isPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '4s' }} />
-          <span className="tracking-widest uppercase font-semibold text-zinc-300 truncate">
-            Now Playing <span className="hidden sm:inline">• Vinyl Studio</span>
+          <ChevronDown className="w-4 h-4 text-zinc-200 group-hover:text-white transition-colors shrink-0" />
+          <span className="max-w-0 opacity-0 overflow-hidden whitespace-nowrap group-hover:max-w-20 group-hover:opacity-100 group-hover:ml-1.5 transition-all duration-300 ease-out text-xs font-medium">
+            Minimize
           </span>
-        </div>
+        </button>
 
         <button
           onClick={handleToggleFavorite}
-          className={`p-2 rounded-full transition-all border shrink-0 ${
+          className={`p-2 rounded-full transition-all border shrink-0 backdrop-blur-md ${
             isFavorite
-              ? 'text-[#fc3c44] bg-[#fc3c44]/10 border-[#fc3c44]/30'
-              : 'text-zinc-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.06]'
+              ? 'text-[#fc3c44] bg-[#fc3c44]/15 border-[#fc3c44]/30'
+              : 'text-zinc-300 hover:text-white bg-white/[0.08] hover:bg-white/[0.18] border-white/[0.1]'
           }`}
           title={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
         >
@@ -160,34 +173,39 @@ export const FocusModeVinylView: React.FC<FocusModeVinylViewProps> = ({ isOpen, 
       </header>
 
       {/* Center Stage: Authentic Turntable Deck with Spinning Vinyl Record & Tonearm */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-2 min-h-0 overflow-hidden">
+      <div className="relative flex-1 flex flex-col items-center justify-center px-4 py-2 min-h-0 overflow-visible">
         {/* Fluid Responsive Turntable Platter Container (Scales gracefully on all viewports) */}
         <div className="relative w-[min(70vw,40vh,350px)] h-[min(70vw,40vh,350px)] flex items-center justify-center shrink-0">
           {/* Metallic Turntable Platter Rim Beneath Vinyl (Zero awkward box clipping) */}
           <div className="absolute inset-[-6px] rounded-full bg-gradient-to-b from-zinc-700 via-zinc-800 to-zinc-950 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9),0_0_80px_rgba(0,0,0,0.7)] pointer-events-none" />
 
-          {/* Spinning Vinyl Record (Đĩa than) */}
+          {/* Spinning Vinyl Record (Đĩa nhựa màu trong suốt với vân đĩa tinh xảo) */}
           <div 
-            className={`w-full h-full rounded-full relative flex items-center justify-center shadow-[0_12px_40px_rgba(0,0,0,0.95)] ring-1 ring-white/10 ${
+            className={`w-full h-full rounded-full relative flex items-center justify-center shadow-[0_15px_45px_rgba(0,0,0,0.85)] ring-1 ring-white/10 vinyl-translucent-body ${
               isPlaying ? 'animate-vinyl-spin' : 'animate-vinyl-spin animate-vinyl-spin-paused'
             }`}
+            style={{
+              ['--vinyl-translucent-bg' as any]: colors.vinylTranslucentBg,
+              ['--vinyl-glow' as any]: colors.glowColor,
+            }}
           >
-            {/* Vinyl Grooves (Rãnh đĩa than bên ngoài) */}
-            <div className="absolute inset-0 rounded-full vinyl-grooves" />
+            {/* Delicate Silky Sound Grooves (Vân rãnh đĩa siêu mịn, không bị thô) */}
+            <div className="absolute inset-0 rounded-full vinyl-delicate-grooves" />
 
-            {/* Vinyl Glossy Specular Light Sheen (Hiệu ứng phản quang đĩa than) */}
-            <div className="absolute inset-0 rounded-full vinyl-sheen pointer-events-none" />
+            {/* Translucent Satin Specular Light Sheen */}
+            <div className="absolute inset-0 rounded-full vinyl-translucent-sheen pointer-events-none opacity-65" />
 
-            {/* Outer Run-in and Accent Grooves */}
-            <div className="absolute inset-1.5 rounded-full border border-white/[0.06] pointer-events-none" />
-            <div className="absolute inset-3.5 rounded-full border border-white/[0.04] pointer-events-none" />
+            {/* Outer Translucent Rim & Accent Grooves */}
+            <div className="absolute inset-0 rounded-full border border-white/15 shadow-[inset_0_0_10px_rgba(0,0,0,0.65)] pointer-events-none" />
+            <div className="absolute inset-2 rounded-full border border-black/25 pointer-events-none" />
 
             {/* Enlarged Center Album Art (Tràn ra gần viền đĩa theo đúng yêu cầu, vẫn giữ dải vân đĩa than) */}
             <div className="relative z-10 w-[63%] h-[63%] rounded-full overflow-hidden border-2 border-[#1c1c20] shadow-[0_0_30px_rgba(0,0,0,0.9)] ring-2 ring-white/15 bg-black flex items-center justify-center">
               <img
-                src={currentTrack.thumbnailUrl}
+                src={albumArt.src}
                 alt={currentTrack.title}
-                className="w-full h-full object-cover select-none pointer-events-none"
+                onError={albumArt.handleError}
+                className="w-full h-full object-cover scale-[1.34] select-none pointer-events-none"
               />
               {/* Center Spindle Eyelet (Lỗ trục kim loại mạ vàng) */}
               <div className="absolute w-4 h-4 rounded-full bg-[#111113] border-2 border-[#d4af37] shadow-inner flex items-center justify-center pointer-events-none">
@@ -254,16 +272,20 @@ export const FocusModeVinylView: React.FC<FocusModeVinylViewProps> = ({ isOpen, 
         </div>
       </div>
 
-      {/* Bottom Track Information & Full Playback Controls */}
-      <footer className="relative z-10 px-4 sm:px-6 py-4 border-t border-white/[0.08] bg-[#0c0c0e]/85 backdrop-blur-xl flex flex-col items-center gap-2.5 max-w-2xl mx-auto w-full shrink-0">
-        {/* Track Title and Artist */}
-        <div className="text-center w-full max-w-lg px-2">
-          <h2 className="text-base sm:text-lg font-bold text-white truncate leading-tight tracking-tight" title={currentTrack.title}>
-            {currentTrack.title}
-          </h2>
-          <p className="text-xs text-zinc-400 font-medium truncate mt-0.5" title={currentTrack.channelTitle}>
-            {currentTrack.channelTitle}
-          </p>
+      {/* Bottom Track Information & Full Playback Controls (Borderless floating glass deck) */}
+      <footer className="relative z-20 px-4 sm:px-6 py-4 bg-gradient-to-t from-black/55 via-black/20 to-transparent flex flex-col items-center gap-2.5 max-w-2xl mx-auto w-full shrink-0">
+        {/* Track Title and Artist with Marquee */}
+        <div className="text-center w-full max-w-md px-2 flex flex-col items-center">
+          <MarqueeText
+            text={currentTrack.title || 'Không có bài hát nào'}
+            className="text-base sm:text-lg font-bold text-white tracking-tight drop-shadow-md"
+            containerClassName="max-w-[min(84vw,420px)]"
+          />
+          <MarqueeText
+            text={currentTrack.channelTitle || 'YouTube Music'}
+            className="text-xs text-zinc-400 font-medium mt-0.5"
+            containerClassName="max-w-[min(70vw,340px)]"
+          />
         </div>
 
         {/* Scrubber Progress Bar */}
@@ -351,32 +373,53 @@ export const FocusModeVinylView: React.FC<FocusModeVinylViewProps> = ({ isOpen, 
             </button>
           </div>
 
-          {/* Right Actions: Volume Control */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Right Actions: Vertical Volume Control with Hover-Only Popup */}
+          <div className="relative group flex items-center justify-center">
             <button
               onClick={() => playerService.toggleMute()}
-              className="p-1.5 text-zinc-400 hover:text-white rounded-full transition-colors"
-              title={status.isMuted ? 'Unmute' : 'Mute'}
+              onDoubleClick={() => playerService.setVolume(80)}
+              className="p-2 text-zinc-300 hover:text-white hover:bg-white/[0.08] rounded-full transition-all active:scale-90"
+              title={status.isMuted ? 'Unmute (Double-click: 80%)' : 'Mute (Double-click: 80%)'}
             >
               {status.isMuted || status.volume === 0 ? (
                 <VolumeX className="w-4 h-4 text-[#fc3c44]" />
+              ) : status.volume < 50 ? (
+                <Volume1 className="w-4 h-4" />
               ) : (
                 <Volume2 className="w-4 h-4" />
               )}
             </button>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={status.isMuted ? 0 : status.volume}
-                onChange={handleVolumeChange}
-                className="w-16 sm:w-24 accent-[#fc3c44] h-1.5 rounded-lg bg-white/[0.1] cursor-pointer"
-                title={`Volume: ${status.isMuted ? 0 : status.volume}%`}
-              />
-              <span className="text-[10px] font-mono text-zinc-400 w-7 tabular-nums text-right">
-                {status.isMuted ? '0%' : `${status.volume}%`}
-              </span>
+
+            {/* Vertical Slider Capsule (Appears on Hover) */}
+            <div 
+              className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 p-2.5 rounded-2xl bg-[#1c1c1e]/95 backdrop-blur-2xl border border-white/[0.12] shadow-[0_12px_32px_rgba(0,0,0,0.85)] flex flex-col items-center opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-200 z-50 animate-in fade-in zoom-in-95"
+            >
+              {/* Bridge to prevent hover loss when moving cursor */}
+              <div className="absolute -bottom-3 left-0 right-0 h-3" />
+
+              <div 
+                className="relative w-6 h-28 flex items-center justify-center cursor-pointer"
+                onDoubleClick={() => playerService.setVolume(80)}
+                title="Âm lượng (Click đúp để về 80%)"
+              >
+                {/* Track with bottom-up red progress fill */}
+                <div className="w-1.5 h-24 bg-white/[0.15] rounded-full overflow-hidden relative flex flex-col justify-end">
+                  <div 
+                    className="w-full bg-[#fc3c44] rounded-full transition-all duration-75"
+                    style={{ height: `${status.isMuted ? 0 : status.volume}%` }}
+                  />
+                </div>
+
+                {/* Rotated range input for natural up/down dragging */}
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={status.isMuted ? 0 : status.volume}
+                  onChange={handleVolumeChange}
+                  className="absolute w-24 h-6 -rotate-90 origin-center opacity-0 cursor-pointer"
+                />
+              </div>
             </div>
           </div>
         </div>

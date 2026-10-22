@@ -17,10 +17,34 @@ export function buildPlayerInjectedScript(opts: PlayerInjectedScriptOptions): st
   const ytVol = Math.round(gain * 100);
   return `
     (() => {
-      // 1. Maintain runtime playback intent
-      window.__userWantsPlaying = ${userWantsPlaying ? 'true' : 'false'};
+      // 0. Intercept JSON.parse & ytInitialPlayerResponse to neutralize ad placements from YouTube player
+      try {
+        if (!window.__yt_json_hooked) {
+          window.__yt_json_hooked = true;
+          const origParse = JSON.parse;
+          JSON.parse = function(...args) {
+            const data = origParse.apply(this, args);
+            if (data && typeof data === 'object') {
+              if (data.adPlacements) data.adPlacements = [];
+              if (data.playerAds) data.playerAds = [];
+              if (data.adSlots) data.adSlots = [];
+            }
+            return data;
+          };
+          if (window.ytInitialPlayerResponse && typeof window.ytInitialPlayerResponse === 'object') {
+            if (window.ytInitialPlayerResponse.adPlacements) window.ytInitialPlayerResponse.adPlacements = [];
+            if (window.ytInitialPlayerResponse.playerAds) window.ytInitialPlayerResponse.playerAds = [];
+            if (window.ytInitialPlayerResponse.adSlots) window.ytInitialPlayerResponse.adSlots = [];
+          }
+        }
+      } catch(e) {}
 
-      // 2. Ad cleaner & prompt skipper (NEVER forces playback)
+      // 1. Maintain runtime playback intent & single source of truth for volume
+      window.__userWantsPlaying = ${userWantsPlaying ? 'true' : 'false'};
+      window.__currentGain = ${gain};
+      window.__isCurrentMuted = ${isMuted ? 'true' : 'false'};
+
+      // 2. High-speed Ad cleaner & prompt skipper
       function purgeAdsAndWarnings() {
         try {
           const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
@@ -39,23 +63,31 @@ export function buildPlayerInjectedScript(opts: PlayerInjectedScriptOptions): st
           );
 
           if (isAd && v) {
-            // Keep audio stream active (not muted) with inaudible volume to prevent Chromium
-            // from pausing playback with 'video-only background media was paused to save power'
+            window.__yt_was_in_ad = true;
+            // Keep inaudible stream active at 16x speed to bypass ad in milliseconds without buffer stall
             v.muted = false;
-            v.volume = 0.0001;
+            v.volume = 0.00001;
             v.playbackRate = 16;
-            if (!isNaN(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.2) {
-              v.currentTime = v.duration;
+            // Safely skip forward only within already buffered chunk to prevent Chromium pipeline stall
+            if (v.buffered && v.buffered.length > 0) {
+              const bEnd = v.buffered.end(v.buffered.length - 1);
+              if (bEnd > v.currentTime + 0.5) {
+                v.currentTime = bEnd - 0.1;
+              }
             }
-          } else if (v && !isAd) {
+          } else if (v && window.__yt_was_in_ad) {
+            // Restore normal volume ONLY once when transitioning out of ad
+            window.__yt_was_in_ad = false;
             if (v.playbackRate !== 1) v.playbackRate = 1;
-            v.muted = ${isMuted ? 'true' : 'false'};
-            v.volume = ${gain};
+            const targetGain = typeof window.__currentGain === 'number' ? window.__currentGain : ${gain};
+            const targetMuted = typeof window.__isCurrentMuted === 'boolean' ? window.__isCurrentMuted : ${isMuted ? 'true' : 'false'};
+            v.volume = targetGain;
+            v.muted = targetMuted;
           }
 
           // Click any skip button immediately
           const skipBtns = document.querySelectorAll(
-            '.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button-text, button.ytp-ad-skip-button-text, .ytp-ad-overlay-close-button'
+            '.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button-modern, .ytp-ad-skip-button-text, button.ytp-ad-skip-button-text, button[class*="skip-button"], .ytp-ad-overlay-close-button'
           );
           skipBtns.forEach(b => { try { b.click(); } catch(e) {} });
 
@@ -63,7 +95,15 @@ export function buildPlayerInjectedScript(opts: PlayerInjectedScriptOptions): st
             try { p.skipAd(); } catch (e) {}
           }
 
-          // Auto-confirm viewer discretion / age warning prompts (e.g. Kendrick Lamar Not Like Us)
+          if (p && typeof p.setPlaybackQuality === 'function') {
+            try {
+              if (p.getPlaybackQuality?.() !== 'tiny') {
+                p.setPlaybackQuality('tiny');
+              }
+            } catch (e) {}
+          }
+
+          // Auto-confirm viewer discretion / age warning prompts
           const confirmBtns = document.querySelectorAll(
             '#confirm-button, ytd-button-renderer#confirm-button button, button[aria-label*="understand" i], button[aria-label*="proceed" i], button[aria-label*="continue" i], yt-playability-error-supported-renderers button, ytd-enforcement-message-view-model button'
           );
@@ -89,7 +129,7 @@ export function buildPlayerInjectedScript(opts: PlayerInjectedScriptOptions): st
 
       purgeAdsAndWarnings();
 
-      // Audio sink & volume initialization
+      // 3. Audio sink & volume initialization (runs ONCE on track load)
       try {
         const v = document.querySelector('video');
         if (v) {
@@ -104,7 +144,57 @@ export function buildPlayerInjectedScript(opts: PlayerInjectedScriptOptions): st
           p.setVolume(${ytVol});
           if (${isMuted}) p.mute?.(); else p.unMute?.();
         }
+        if (p) {
+          try {
+            if (typeof p.setPlaybackQuality === 'function') p.setPlaybackQuality('tiny');
+            if (typeof p.setPlaybackQualityRange === 'function') p.setPlaybackQualityRange('tiny', 'tiny');
+          } catch (e) {}
+        }
       } catch (e) {}
+
+      // 4. Protected MediaSession bridge inside webview for Bluetooth headsets & Windows SMTC
+      try {
+        if ('mediaSession' in navigator && !window.__yt_mediasession_installed) {
+          window.__yt_mediasession_installed = true;
+          const ms = navigator.mediaSession;
+          const notify = (action) => {
+            console.log('__WEBVIEW_MEDIA_ACTION__:' + action);
+          };
+
+          const origSetAction = ms.setActionHandler.bind(ms);
+          // Protect action handlers from being overwritten by YouTube's scripts
+          ms.setActionHandler = (action, handler) => {
+            if (['play', 'pause', 'nexttrack', 'previoustrack', 'stop'].includes(action)) {
+              return;
+            }
+            return origSetAction(action, handler);
+          };
+
+          origSetAction('play', () => {
+            notify('play');
+            try {
+              document.querySelector('video')?.play()?.catch(() => {});
+              document.getElementById('movie_player')?.playVideo?.();
+            } catch(e){}
+          });
+          origSetAction('pause', () => {
+            notify('pause');
+            try {
+              document.querySelector('video')?.pause();
+              document.getElementById('movie_player')?.pauseVideo?.();
+            } catch(e){}
+          });
+          origSetAction('nexttrack', () => {
+            notify('nextTrack');
+          });
+          origSetAction('previoustrack', () => {
+            notify('prevTrack');
+          });
+          origSetAction('stop', () => {
+            notify('pause');
+          });
+        }
+      } catch(e) {}
     })();
   `;
 }
@@ -112,9 +202,11 @@ export function buildPlayerInjectedScript(opts: PlayerInjectedScriptOptions): st
 class PlayerService {
   private webview: any = null;
   private webviewLoadListener: (() => void) | null = null;
+  private webviewConsoleListener: ((e: any) => void) | null = null;
   private progressTimer: any = null;
   private listeners: Set<PlayerListener> = new Set();
   public onTrackEndedCallback: (() => void) | null = null;
+  public onMediaAction: ((action: string) => void) | null = null;
   private isEndedHandled: boolean = false;
   private trackStartTime: number = 0;
   private userWantsPlaying: boolean = false;
@@ -127,6 +219,7 @@ class PlayerService {
   private adStuckStreak: number = 0;
   private adLastTime: number = -1;
   private adStuckRetryCount: number = 0;
+  private ytPlayerVolumeDebounceTimer: any = null;
 
   private status: PlayerStatus = {
     currentTrack: null,
@@ -165,11 +258,18 @@ class PlayerService {
     if (!wv) return;
     if (this.webview === wv) return;
 
-    if (this.webview && this.webviewLoadListener) {
-      try {
-        this.webview.removeEventListener('dom-ready', this.webviewLoadListener);
-        this.webview.removeEventListener('did-finish-load', this.webviewLoadListener);
-      } catch {}
+    if (this.webview) {
+      if (this.webviewLoadListener) {
+        try {
+          this.webview.removeEventListener('dom-ready', this.webviewLoadListener);
+          this.webview.removeEventListener('did-finish-load', this.webviewLoadListener);
+        } catch {}
+      }
+      if (this.webviewConsoleListener) {
+        try {
+          this.webview.removeEventListener('console-message', this.webviewConsoleListener);
+        } catch {}
+      }
     }
 
     this.webview = wv;
@@ -179,12 +279,74 @@ class PlayerService {
       this.onWebviewLoaded();
     };
 
+    this.webviewConsoleListener = (e: any) => {
+      const msg = e.message;
+      if (typeof msg === 'string' && msg.startsWith('__WEBVIEW_MEDIA_ACTION__:')) {
+        const action = msg.substring('__WEBVIEW_MEDIA_ACTION__:'.length);
+        this.handleMediaAction(action);
+      }
+    };
+
     try {
       this.webview.addEventListener('dom-ready', this.webviewLoadListener);
       this.webview.addEventListener('did-finish-load', this.webviewLoadListener);
+      this.webview.addEventListener('console-message', this.webviewConsoleListener);
     } catch {}
 
     this.startPollingTimer();
+  }
+
+  public handleMediaAction(action: string): void {
+    switch (action) {
+      case 'play':
+        this.play();
+        break;
+      case 'pause':
+        this.pause();
+        break;
+      case 'togglePlayPause':
+        this.togglePlayPause();
+        break;
+      case 'nextTrack':
+      case 'prevTrack':
+        this.onMediaAction?.(action);
+        break;
+      case 'volumeUp':
+        this.setVolume(this.status.volume + 5);
+        break;
+      case 'volumeDown':
+        this.setVolume(this.status.volume - 5);
+        break;
+      case 'toggleMute':
+        this.toggleMute();
+        break;
+      default:
+        break;
+    }
+  }
+
+  public updateWebviewMetadata(track: TrackReference | null): void {
+    if (!this.webview || !track) return;
+    const title = (track.title || '').replace(/['\\]/g, '\\$&');
+    const artist = (track.channelTitle || '').replace(/['\\]/g, '\\$&');
+    const thumb = (track.thumbnailUrl || '').replace(/['\\]/g, '\\$&');
+    this.webview
+      .executeJavaScript(`
+        (() => {
+          try {
+            if ('mediaSession' in navigator) {
+              navigator.mediaSession.metadata = new MediaMetadata({
+                title: '${title}',
+                artist: '${artist}',
+                artwork: [
+                  { src: '${thumb}', sizes: '512x512', type: 'image/jpeg' }
+                ]
+              });
+            }
+          } catch(e){}
+        })()
+      `, true)
+      .catch(() => {});
   }
 
   // Backwards compatibility if called with containerId
@@ -281,11 +443,14 @@ class PlayerService {
               v.muted = false;
               v.volume = 0.0001;
               v.playbackRate = 16;
-              if (!isNaN(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.2) {
-                v.currentTime = v.duration;
+              if (v.buffered && v.buffered.length > 0) {
+                const bEnd = v.buffered.end(v.buffered.length - 1);
+                if (bEnd > v.currentTime + 0.5) {
+                  v.currentTime = bEnd - 0.1;
+                }
               }
               const skipBtns = document.querySelectorAll(
-                '.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-ad-skip-button-text'
+                '.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-ad-skip-button-text, .ytp-ad-overlay-close-button'
               );
               skipBtns.forEach(b => { try { b.click(); } catch(e) {} });
               if (p && typeof p.skipAd === 'function') {
@@ -293,10 +458,11 @@ class PlayerService {
               }
             } else if (v && !adActive) {
               if (v.playbackRate !== 1) v.playbackRate = 1;
-              v.muted = ${this.status.isMuted ? 'true' : 'false'};
-              const targetGain = ${this.calculateGain(this.status.volume)};
-              if (Math.abs(v.volume - targetGain) > 0.02) {
-                v.volume = targetGain;
+              const curGain = typeof window.__currentGain === 'number' ? window.__currentGain : ${this.calculateGain(this.status.volume)};
+              const curMuted = typeof window.__isCurrentMuted === 'boolean' ? window.__isCurrentMuted : ${this.status.isMuted ? 'true' : 'false'};
+              if (v.muted !== curMuted) v.muted = curMuted;
+              if (Math.abs(v.volume - curGain) > 0.08) {
+                v.volume = curGain;
               }
             }
 
@@ -349,9 +515,11 @@ class PlayerService {
                     const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
                     const v = document.querySelector('video');
                     if (p && typeof p.loadVideoById === 'function') {
-                      // Point C: Always force loadVideoById for cold start (dropping seekTo)
-                      // so YouTube player reloads video stream freshly, bypassing stuck pre-roll ads
-                      p.loadVideoById('${target.videoId}');
+                      // Point C: Always force loadVideoById for cold start with tiny (144p) quality
+                      // so background video streams minimal data for instantaneous music loading
+                      p.loadVideoById('${target.videoId}', 0, 'tiny');
+                      p.setPlaybackQuality?.('tiny');
+                      p.setPlaybackQualityRange?.('tiny', 'tiny');
                       p.playVideo?.();
                       if (v) {
                         v.muted = ${this.status.isMuted ? 'true' : 'false'};
@@ -382,24 +550,29 @@ class PlayerService {
               this.adLastTime = data.currentTime;
             }
 
-            // Point D: If ad is stuck at the exact same currentTime for ~3s (12 cycles of 250ms)
-            if (this.adStuckStreak >= 12 && this.adStuckRetryCount < 2 && this.status.currentTrack) {
+            // Fast recovery: If ad is active for ~1s (4 cycles of 250ms), force skipAd and reload cleanly
+            if (this.adStuckStreak >= 4 && this.status.currentTrack) {
               this.adStuckStreak = 0;
               this.adStuckRetryCount++;
               const curTrackId = this.status.currentTrack.videoId;
-              console.log(`[player] Ad stuck detected at t=${data.currentTime}, forcing loadVideoById retry #${this.adStuckRetryCount}`);
+              console.log(`[player] Ad stall detected, forcing fast skip/reload for track ${curTrackId}`);
               this.webview.executeJavaScript(`
                 (() => {
                   try {
                     const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+                    if (p && typeof p.skipAd === 'function') {
+                      p.skipAd();
+                    }
                     if (p && typeof p.loadVideoById === 'function') {
-                      p.loadVideoById('${curTrackId}');
+                      p.loadVideoById('${curTrackId}', 0, 'tiny');
+                      p.setPlaybackQuality?.('tiny');
+                      p.setPlaybackQualityRange?.('tiny', 'tiny');
                       p.playVideo?.();
                     }
                     const v = document.querySelector('video');
                     if (v) {
-                      v.muted = ${this.status.isMuted ? 'true' : 'false'};
-                      v.volume = ${this.calculateGain(this.status.volume)};
+                      v.muted = typeof window.__isCurrentMuted === 'boolean' ? window.__isCurrentMuted : ${this.status.isMuted ? 'true' : 'false'};
+                      v.volume = typeof window.__currentGain === 'number' ? window.__currentGain : ${this.calculateGain(this.status.volume)};
                       v.play().catch(e => console.log('play rejected:', e.name, e.message));
                     }
                     if (p && typeof p.setVolume === 'function') {
@@ -643,6 +816,7 @@ class PlayerService {
       isPlaying: true,
     };
     this.notify();
+    this.updateWebviewMetadata(track);
 
     if (!this.webview) {
       const el = document.getElementById('yt-player-webview');
@@ -668,7 +842,9 @@ class PlayerService {
                     p.seekTo?.(0, true);
                     p.playVideo?.();
                   } else {
-                    p.loadVideoById('${track.videoId}');
+                    p.loadVideoById('${track.videoId}', 0, 'tiny');
+                    p.setPlaybackQuality?.('tiny');
+                    p.setPlaybackQualityRange?.('tiny', 'tiny');
                     p.playVideo?.();
                   }
                   if (v) {
@@ -707,7 +883,7 @@ class PlayerService {
       this.isPlayerReady = false;
 
       try {
-        const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(track.videoId)}&autoplay=1&vq=small`;
+        const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(track.videoId)}&autoplay=1&vq=tiny`;
         void this.webview.loadURL(watchUrl).catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error);
           if (!message.includes('ERR_ABORTED')) {
@@ -807,10 +983,17 @@ class PlayerService {
     }
   }
 
+  private lastVolumeDispatchTime: number = 0;
+  private pendingVolumeTimer: any = null;
+  private pendingVolumeData: { gain: number; ytVolume: number; isNowMuted: boolean } | null = null;
+  private wasPreviouslyMuted: boolean = false;
+
   public setVolume(volume: number): void {
     const clamped = Math.max(0, Math.min(100, volume));
     this.status.volume = clamped;
-    this.status.isMuted = clamped === 0;
+    const isNowMuted = clamped === 0;
+    this.status.isMuted = isNowMuted;
+
     try {
       localStorage.setItem('ytm_volume', String(clamped));
     } catch {}
@@ -819,7 +1002,44 @@ class PlayerService {
     const gain = this.calculateGain(clamped);
     const ytVolume = Math.round(gain * 100);
 
-    if (this.webview) {
+    this.dispatchVolumeThrottled(gain, ytVolume, isNowMuted);
+  }
+
+  private dispatchVolumeThrottled(gain: number, ytVolume: number, isNowMuted: boolean): void {
+    this.pendingVolumeData = { gain, ytVolume, isNowMuted };
+    const now = Date.now();
+    const timeSinceLast = now - this.lastVolumeDispatchTime;
+    const THROTTLE_MS = 30;
+
+    if (timeSinceLast >= THROTTLE_MS) {
+      if (this.pendingVolumeTimer) {
+        clearTimeout(this.pendingVolumeTimer);
+        this.pendingVolumeTimer = null;
+      }
+      this.lastVolumeDispatchTime = now;
+      this.sendVolumeToWebview(gain, ytVolume, isNowMuted);
+    } else if (!this.pendingVolumeTimer) {
+      this.pendingVolumeTimer = setTimeout(() => {
+        this.pendingVolumeTimer = null;
+        this.lastVolumeDispatchTime = Date.now();
+        if (this.pendingVolumeData) {
+          this.sendVolumeToWebview(
+            this.pendingVolumeData.gain,
+            this.pendingVolumeData.ytVolume,
+            this.pendingVolumeData.isNowMuted
+          );
+        }
+      }, THROTTLE_MS - timeSinceLast);
+    }
+  }
+
+  private syncYtPlayerVolumeDebounced(ytVolume: number, isNowMuted: boolean, shouldUnmute: boolean): void {
+    if (this.ytPlayerVolumeDebounceTimer) {
+      clearTimeout(this.ytPlayerVolumeDebounceTimer);
+    }
+    this.ytPlayerVolumeDebounceTimer = setTimeout(() => {
+      this.ytPlayerVolumeDebounceTimer = null;
+      if (!this.webview) return;
       this.webview
         .executeJavaScript(`
           (() => {
@@ -827,18 +1047,44 @@ class PlayerService {
               const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
               if (p && typeof p.setVolume === 'function') {
                 p.setVolume(${ytVolume});
-                if (${clamped === 0}) p.mute?.(); else p.unMute?.();
-              }
-              const v = document.querySelector('video');
-              if (v) {
-                v.volume = ${gain};
-                v.muted = ${clamped === 0};
+                if (${isNowMuted}) {
+                  p.mute?.();
+                } else if (${shouldUnmute}) {
+                  p.unMute?.();
+                }
               }
             } catch(e){}
           })()
         `, true)
         .catch(() => {});
-    }
+    }, 200);
+  }
+
+  private sendVolumeToWebview(gain: number, ytVolume: number, isNowMuted: boolean): void {
+    if (!this.webview) return;
+
+    const shouldUnmute = this.wasPreviouslyMuted && !isNowMuted;
+    this.wasPreviouslyMuted = isNowMuted;
+
+    // Direct hardware-level audio gain on HTMLVideoElement: smooth, zero-latency, crackle-free
+    this.webview
+      .executeJavaScript(`
+        (() => {
+          try {
+            window.__currentGain = ${gain};
+            window.__isCurrentMuted = ${isNowMuted ? 'true' : 'false'};
+            const v = document.querySelector('video');
+            if (v) {
+              v.volume = ${gain};
+              v.muted = ${isNowMuted ? 'true' : 'false'};
+            }
+          } catch(e){}
+        })()
+      `, true)
+      .catch(() => {});
+
+    // Sync YouTube internal player API debounced to prevent audio buffer resets and stutter while dragging
+    this.syncYtPlayerVolumeDebounced(ytVolume, isNowMuted, shouldUnmute);
   }
 
   public toggleMute(): void {
@@ -860,17 +1106,19 @@ class PlayerService {
         .executeJavaScript(`
           (() => {
             try {
+              window.__currentGain = ${gain};
+              window.__isCurrentMuted = ${nextMuted ? 'true' : 'false'};
+              const v = document.querySelector('video');
+              if (v) {
+                v.muted = ${nextMuted};
+                v.volume = ${gain};
+              }
               const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
               if (p) {
                 if (${nextMuted}) p.mute?.(); else {
                   p.unMute?.();
                   p.setVolume?.(${ytVolume});
                 }
-              }
-              const v = document.querySelector('video');
-              if (v) {
-                v.muted = ${nextMuted};
-                v.volume = ${gain};
               }
             } catch(e){}
           })()

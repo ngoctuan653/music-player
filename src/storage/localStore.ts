@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoPlayNext: true,
   theme: 'dark',
   glassEffect: 'auto',
+  focusModeStyle: 'sleeve',
 };
 
 const DEFAULT_PLAYLISTS: Playlist[] = [
@@ -293,3 +294,6 @@ export class LocalStorageManager {
     }
   }
 }
+
+export const localStore = LocalStorageManager;
+

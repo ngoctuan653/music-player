@@ -51,6 +51,7 @@ export interface AppSettings {
   autoPlayNext: boolean;
   theme: 'dark' | 'system';
   glassEffect: 'auto' | 'high' | 'balanced' | 'performance' | 'off';
+  focusModeStyle?: 'turntable' | 'sleeve';
 }
 
 export interface SearchResultItem {
