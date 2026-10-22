@@ -241,6 +241,12 @@ function setupNetworkInterceptors() {
   app.on('web-contents-created', (_event, contents) => {
     contents.setMaxListeners(100);
     attachAdBlocker(contents.session);
+
+    // Explicitly guarantee no user gesture requirement for <webview> tags
+    contents.on('will-attach-webview' as any, (_waEvent: any, webPreferences: any) => {
+      webPreferences.autoplayPolicy = 'no-user-gesture-required';
+    });
+
     if (contents.getType() === 'webview') {
       contents.on('console-message', (_e, level, msg) => {
         if (msg.includes('Insecure Content-Security-Policy') || msg.includes('powerPreference')) return;

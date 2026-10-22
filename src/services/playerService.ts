@@ -111,6 +111,8 @@ class PlayerService {
   private isPlayerReady: boolean = false;
   private pendingTrack: TrackReference | null = null;
   private errorStreakCounter: number = 0;
+  private retryTimer: any = null;
+  private retryCount: number = 0;
 
   private status: PlayerStatus = {
     currentTrack: null,
@@ -320,13 +322,15 @@ class PlayerService {
                       if (v) {
                         v.muted = ${this.status.isMuted ? 'true' : 'false'};
                         v.volume = ${this.status.volume / 100};
-                        v.play().catch(() => {});
+                        v.play().catch(e => console.log('play rejected:', e.name, e.message));
                       }
                     }
                   } catch(e) {}
                 })()
               `;
-              void this.webview.executeJavaScript(initPlayScript).catch(() => {});
+              void this.webview.executeJavaScript(initPlayScript, true).catch(() => {});
+              this.schedulePlaybackVerification(target.videoId);
+              this.logPlaybackSnapshots();
             }
           }
 
@@ -383,7 +387,7 @@ class PlayerService {
                     document.getElementById('movie_player')?.pauseVideo?.();
                   } catch(e){}
                 })()
-              `).catch(() => {});
+              `, true).catch(() => {});
             }
           } else if (this.userWantsPlaying && data.paused && !data.ended && data.isReady) {
             // User wants playing: resume if player is unstarted (-1) or paused (2) and not buffering (3)
@@ -393,11 +397,11 @@ class PlayerService {
                   try {
                     if (window.__userWantsPlaying) {
                       document.getElementById('movie_player')?.playVideo?.();
-                      document.querySelector('video')?.play().catch(() => {});
+                      document.querySelector('video')?.play().catch(e => console.log('play rejected:', e.name, e.message));
                     }
                   } catch(e){}
                 })()
-              `).catch(() => {});
+              `, true).catch(() => {});
             }
           }
 
@@ -433,6 +437,102 @@ class PlayerService {
     }, 250);
   }
 
+  private cancelPlaybackRetry(): void {
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+    this.retryCount = 0;
+  }
+
+  private schedulePlaybackVerification(videoId: string): void {
+    this.cancelPlaybackRetry();
+
+    const check = () => {
+      if (!this.userWantsPlaying || !this.webview) return;
+      if (this.status.currentTrack?.videoId !== videoId) return;
+
+      this.webview
+        .executeJavaScript(
+          `(() => {
+            try {
+              const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+              const v = document.querySelector('video');
+              const state = p?.getPlayerState ? p.getPlayerState() : -1;
+              const paused = v ? v.paused : true;
+              return { state, paused };
+            } catch(e) {
+              return { state: -1, paused: true };
+            }
+          })()`,
+          true
+        )
+        .then((res: { state: number; paused: boolean }) => {
+          if (this.userWantsPlaying && res.state !== 1 && res.state !== 3 && this.retryCount < 3) {
+            this.retryCount++;
+            console.log(
+              `[Playback Assurance] Retrying play for ${videoId} (attempt ${this.retryCount}/3, state=${res.state}, paused=${res.paused})`
+            );
+            this.webview
+              .executeJavaScript(
+                `(() => {
+                  try {
+                    if (window.__userWantsPlaying) {
+                      const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+                      p?.playVideo?.();
+                      const v = document.querySelector('video');
+                      if (v && v.paused) {
+                        v.play().catch(e => console.log('play rejected:', e.name, e.message));
+                      }
+                    }
+                  } catch(e) {}
+                })()`,
+                true
+              )
+              .catch(() => {});
+
+            if (this.retryCount < 3) {
+              this.retryTimer = setTimeout(check, 1500);
+            }
+          }
+        })
+        .catch(() => {});
+    };
+
+    this.retryTimer = setTimeout(check, 1500);
+  }
+
+  private logPlaybackSnapshots(): void {
+    const snap = () =>
+      this.webview
+        ?.executeJavaScript(
+          `(() => {
+            const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+            const v = document.querySelector('video');
+            return JSON.stringify({
+              href: location.href,
+              hasPlayer: !!p,
+              load: typeof p?.loadVideoById,
+              state: p?.getPlayerState?.(),   // -1 unstarted, 1 playing, 2 paused, 3 buffering, 5 cued
+              paused: v?.paused,
+              ready: v?.readyState,
+              t: v?.currentTime,
+              err: v?.error?.code,
+              ad: Boolean(
+                p?.classList.contains('ad-showing') ||
+                p?.classList.contains('ad-interrupting') ||
+                (p && typeof p.getAdState === 'function' && p.getAdState() === 1)
+              )
+            });
+          })()`,
+          true
+        )
+        .then((s: string) => console.log('[snap]', s))
+        .catch(() => {});
+
+    [500, 1500, 3000, 5000].forEach((ms) => setTimeout(snap, ms));
+  }
+
   private handleTrackEnded(): void {
     if (this.status.repeatMode === 'one') {
       this.seekTo(0);
@@ -444,6 +544,7 @@ class PlayerService {
   }
 
   public async playTrack(track: TrackReference): Promise<void> {
+    this.cancelPlaybackRetry();
     this.isEndedHandled = false;
     this.userWantsPlaying = true;
     this.trackStartTime = Date.now();
@@ -489,7 +590,7 @@ class PlayerService {
                   if (v) {
                     v.muted = ${this.status.isMuted ? 'true' : 'false'};
                     v.volume = ${this.status.volume / 100};
-                    v.play().catch(() => {});
+                    v.play().catch(e => console.log('play rejected:', e.name, e.message));
                   }
                   // Auto-confirm warning if present immediately
                   setTimeout(() => {
@@ -505,8 +606,10 @@ class PlayerService {
               }
             })();
           `;
-          const switched = await this.webview.executeJavaScript(switchScript);
+          const switched = await this.webview.executeJavaScript(switchScript, true);
           if (switched) {
+            this.schedulePlaybackVerification(track.videoId);
+            this.logPlaybackSnapshots();
             return;
           }
         } catch {}
@@ -531,6 +634,7 @@ class PlayerService {
             this.notify();
           }
         });
+        this.logPlaybackSnapshots();
       } catch (err) {
         console.error('Failed to load track in webview:', err);
       }
@@ -542,6 +646,10 @@ class PlayerService {
     this.status.isPlaying = true;
     this.notify();
 
+    if (this.status.currentTrack) {
+      this.schedulePlaybackVerification(this.status.currentTrack.videoId);
+    }
+
     if (this.webview) {
       this.webview
         .executeJavaScript(`
@@ -551,15 +659,16 @@ class PlayerService {
               const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
               p?.playVideo?.();
               const v = document.querySelector('video');
-              if (v && v.paused) v.play().catch(() => {});
+              if (v && v.paused) v.play().catch(e => console.log('play rejected:', e.name, e.message));
             } catch(e){}
           })()
-        `)
+        `, true)
         .catch(() => {});
     }
   }
 
   public pause(): void {
+    this.cancelPlaybackRetry();
     this.userWantsPlaying = false;
     this.status.isPlaying = false;
     this.notify();
@@ -576,7 +685,7 @@ class PlayerService {
               if (v) v.pause();
             } catch(e){}
           })()
-        `)
+        `, true)
         .catch(() => {});
     }
   }
@@ -606,7 +715,7 @@ class PlayerService {
               if (v) v.currentTime = ${seconds};
             } catch(e){}
           })()
-        `)
+        `, true)
         .catch(() => {});
     }
   }
@@ -634,7 +743,7 @@ class PlayerService {
               }
             } catch(e){}
           })()
-        `)
+        `, true)
         .catch(() => {});
     }
   }
@@ -657,7 +766,7 @@ class PlayerService {
               if (v) v.muted = ${nextMuted};
             } catch(e){}
           })()
-        `)
+        `, true)
         .catch(() => {});
     }
   }

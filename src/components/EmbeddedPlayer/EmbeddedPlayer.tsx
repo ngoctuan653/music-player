@@ -73,6 +73,7 @@ export const EmbeddedPlayer: React.FC<EmbeddedPlayerProps> = ({ isOpen, onClose 
           src="about:blank"
           className="w-full h-full border-0"
           allowpopups={true}
+          webpreferences="autoplayPolicy=no-user-gesture-required"
         />
       </div>
     </div>
