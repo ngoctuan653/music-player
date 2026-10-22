@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   setAudioOutputDevice: (deviceId: string) => ipcRenderer.invoke('set-audio-output-device', deviceId),
   fetchNet: (url: string) => ipcRenderer.invoke('net-fetch', url),
+  fetchYouTubeRadio: (params: { videoId: string; reqId: number }) => ipcRenderer.invoke('fetch-youtube-radio', params),
   getDnsConfig: () => ipcRenderer.invoke('get-dns-config'),
   setDnsConfig: (config: any) => ipcRenderer.invoke('set-dns-config', config),
   onMediaControl: (callback: (action: string) => void) => {

@@ -161,7 +161,7 @@ export class LocalStorageManager {
     this.notifyHistory();
   }
 
-  static getSavedQueue(): { queue: TrackReference[]; currentIndex: number } | null {
+  static getSavedQueue(): { queue: TrackReference[]; currentIndex: number; queueSource?: any } | null {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.QUEUE);
       return data ? JSON.parse(data) : null;
@@ -170,11 +170,12 @@ export class LocalStorageManager {
     }
   }
 
-  static saveQueue(queue: TrackReference[], currentIndex: number): void {
+  static saveQueue(queue: TrackReference[], currentIndex: number, queueSource?: any): void {
     try {
-      localStorage.setItem(STORAGE_KEYS.QUEUE, JSON.stringify({ queue, currentIndex }));
+      localStorage.setItem(STORAGE_KEYS.QUEUE, JSON.stringify({ queue, currentIndex, queueSource }));
     } catch (e) {
       console.error('Failed to save queue', e);
     }
   }
 }
+

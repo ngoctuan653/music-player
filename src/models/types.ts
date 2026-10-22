@@ -5,6 +5,14 @@ export interface TrackReference {
   thumbnailUrl: string;
   duration?: string;
   addedAt: number;
+  isManual?: boolean;
+  isRadio?: boolean;
+}
+
+export interface QueueSourceInfo {
+  type: 'radio' | 'manual' | 'playlist';
+  seedTitle?: string;
+  seedVideoId?: string;
 }
 
 export interface QueueItem {
@@ -78,6 +86,12 @@ declare global {
       onGlassWindowVisibility?: (callback: (visible: boolean) => void) => () => void;
       setAudioOutputDevice?: (deviceId: string) => Promise<boolean>;
       fetchNet?: (url: string) => Promise<{ ok: boolean; status: number; data?: string; error?: string }>;
+      fetchYouTubeRadio?: (params: { videoId: string; reqId: number }) => Promise<{
+        reqId: number;
+        videoId: string;
+        tracks: SearchResultItem[];
+        source: 'web_remix' | 'web' | 'secondary' | 'empty';
+      }>;
       onMediaControl: (callback: (action: string) => void) => () => void;
       setAppBadge?: (text: string) => void;
       getDnsConfig?: () => Promise<{ mode: 'ublock' | 'controld' | 'hagezi' | 'nextdns' | 'cloudflare' | 'adguard' | 'family' | 'custom' | 'off'; url?: string; accountKey?: string }>;
@@ -85,3 +99,4 @@ declare global {
     };
   }
 }
+

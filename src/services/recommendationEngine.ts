@@ -327,4 +327,99 @@ export class RecommendationEngine {
       addedAt: Date.now(),
     };
   }
+
+  /**
+   * Filters, deduplicates, and limits artist saturation for Song Radio batches.
+   * - Strips seed track and any track already in queue.
+   * - Eliminates duplicate titles via isSameSong.
+   * - Filters out > 12 minute videos and non-music videos.
+   * - Enforces artist limit: max 2-3 per non-seed artist, up to 4 for seed artist.
+   * - Tags resulting tracks with isRadio: true.
+   */
+  static filterAndScoreRadioCandidates(params: {
+    candidates: SearchResultItem[];
+    seedTrack: TrackReference;
+    currentQueue: TrackReference[];
+    history?: TrackReference[];
+    targetCount?: number;
+  }): TrackReference[] {
+    const { candidates, seedTrack, currentQueue, history = [], targetCount = 18 } = params;
+
+    const queuedIds = new Set(currentQueue.map((t) => t.videoId));
+    queuedIds.add(seedTrack.videoId);
+
+    const recentHistory = history.slice(0, 15);
+    const existingTracksToCheck: (TrackReference | SearchResultItem)[] = [
+      seedTrack,
+      ...currentQueue,
+      ...recentHistory,
+    ];
+
+    const seedArtist = cleanArtistName(seedTrack.channelTitle);
+    const artistCounts = new Map<string, number>();
+
+    // Count existing artists in current queue
+    for (const t of currentQueue) {
+      const art = cleanArtistName(t.channelTitle);
+      if (art) {
+        artistCounts.set(art, (artistCounts.get(art) || 0) + 1);
+      }
+    }
+
+    const seenIds = new Set<string>();
+    const accepted: TrackReference[] = [];
+
+    for (const item of candidates) {
+      if (!item.videoId || item.videoId.length !== 11) continue;
+      if (queuedIds.has(item.videoId) || seenIds.has(item.videoId)) continue;
+      seenIds.add(item.videoId);
+
+      // Hard filter: Cannot duplicate existing title in queue/recent
+      if (isDuplicateOfExisting(item.title, existingTracksToCheck)) {
+        continue;
+      }
+
+      // Hard filter: Duration and non-music checks
+      if (isLongFormVideo(item.title, item.duration)) {
+        continue;
+      }
+      if (isNonMusicVideo(item.title)) {
+        continue;
+      }
+
+      // Artist saturation limit
+      const art = cleanArtistName(item.channelTitle);
+      const currentCount = art ? (artistCounts.get(art) || 0) : 0;
+      const isSeedArtist = Boolean(art && seedArtist && art === seedArtist);
+      const maxAllowed = isSeedArtist ? 4 : 3;
+
+      if (art && currentCount >= maxAllowed) {
+        continue;
+      }
+
+      if (art) {
+        artistCounts.set(art, currentCount + 1);
+      }
+
+      const radioTrack: TrackReference = {
+        videoId: item.videoId,
+        title: item.title,
+        channelTitle: item.channelTitle,
+        thumbnailUrl: item.thumbnailUrl,
+        duration: item.duration,
+        addedAt: Date.now(),
+        isRadio: true,
+      };
+
+      accepted.push(radioTrack);
+      existingTracksToCheck.push(radioTrack);
+
+      if (accepted.length >= targetCount) {
+        break;
+      }
+    }
+
+    return accepted;
+  }
 }
+

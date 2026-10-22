@@ -500,7 +500,192 @@ if (!gotTheLock) {
       }
     });
 
-    // IPC audio output device routing across all windows, frames & webviews
+    // 2-hour TTL cache for YouTube Radio Mixes
+    interface CachedRadio {
+      timestamp: number;
+      tracks: Array<{
+        videoId: string;
+        title: string;
+        channelTitle: string;
+        duration?: string;
+        thumbnailUrl: string;
+      }>;
+      source: 'web_remix' | 'web' | 'secondary' | 'empty';
+    }
+    const radioCache = new Map<string, CachedRadio>();
+    const RADIO_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+
+    ipcMain.handle('fetch-youtube-radio', async (_event, params: { videoId: string; reqId: number }) => {
+      const { videoId, reqId } = params;
+      if (!videoId) {
+        return { reqId, videoId, tracks: [], source: 'empty' };
+      }
+
+      const cached = radioCache.get(videoId);
+      if (cached && Date.now() - cached.timestamp < RADIO_CACHE_TTL_MS) {
+        return { reqId, videoId, tracks: cached.tracks, source: cached.source };
+      }
+
+      // Step 1: Query YouTube Music (client WEB_REMIX, RDAMVM)
+      try {
+        const musicPost = JSON.stringify({
+          context: {
+            client: {
+              clientName: 'WEB_REMIX',
+              clientVersion: '1.20240101.01.00',
+              hl: 'vi',
+              gl: 'VN',
+            },
+          },
+          playlistId: 'RDAMVM' + videoId,
+          videoId,
+        });
+
+        const musicRes = await net.fetch('https://music.youtube.com/youtubei/v1/next?prettyPrint=false', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+            'Origin': 'https://music.youtube.com',
+            'Referer': 'https://music.youtube.com/',
+          },
+          body: musicPost,
+        });
+
+        if (musicRes.ok) {
+          const json: any = await musicRes.json();
+          const rawContents =
+            json?.contents?.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer?.watchNextTabbedResultsRenderer?.tabs?.[0]
+              ?.tabRenderer?.content?.musicQueueRenderer?.content?.playlistPanelRenderer?.contents || [];
+
+          const tracks: any[] = [];
+          for (const item of rawContents) {
+            const pvr = item.playlistPanelVideoRenderer;
+            if (pvr && pvr.videoId && pvr.videoId.length === 11) {
+              const title =
+                pvr.title?.runs?.map((r: any) => r.text).join('') || pvr.title?.simpleText || '';
+              const channel =
+                pvr.longBylineText?.runs?.map((r: any) => r.text).join('') ||
+                pvr.shortBylineText?.runs?.map((r: any) => r.text).join('') ||
+                'YouTube Music';
+              const duration = pvr.lengthText?.runs?.[0]?.text || pvr.lengthText?.simpleText || undefined;
+              const thumbs = pvr.thumbnail?.thumbnails || [];
+              const thumbUrl = thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${pvr.videoId}/hqdefault.jpg`;
+              tracks.push({
+                videoId: pvr.videoId,
+                title,
+                channelTitle: channel,
+                duration,
+                thumbnailUrl: thumbUrl.startsWith('//') ? 'https:' + thumbUrl : thumbUrl,
+              });
+            }
+          }
+
+          if (tracks.length >= 8) {
+            radioCache.set(videoId, { timestamp: Date.now(), tracks, source: 'web_remix' });
+            return { reqId, videoId, tracks, source: 'web_remix' };
+          }
+        }
+      } catch (err) {
+        console.warn('YouTube Music radio fetch failed, trying YouTube Web fallback:', err);
+      }
+
+      // Step 2: Fallback to YouTube Web (client WEB, RD)
+      try {
+        const webPost = JSON.stringify({
+          context: {
+            client: {
+              clientName: 'WEB',
+              clientVersion: '2.20240101.00.00',
+              hl: 'vi',
+              gl: 'VN',
+            },
+          },
+          playlistId: 'RD' + videoId,
+          videoId,
+        });
+
+        const webRes = await net.fetch('https://www.youtube.com/youtubei/v1/next?prettyPrint=false', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+          },
+          body: webPost,
+        });
+
+        if (webRes.ok) {
+          const json: any = await webRes.json();
+          const rawContents = json?.contents?.twoColumnWatchNextResults?.playlist?.playlist?.contents || [];
+          const tracks: any[] = [];
+
+          for (const item of rawContents) {
+            const pvr = item.playlistPanelVideoRenderer;
+            if (pvr && pvr.videoId && pvr.videoId.length === 11) {
+              const title =
+                pvr.title?.runs?.map((r: any) => r.text).join('') || pvr.title?.simpleText || '';
+              const channel =
+                pvr.shortBylineText?.runs?.map((r: any) => r.text).join('') ||
+                pvr.shortBylineText?.simpleText ||
+                'YouTube';
+              const duration = pvr.lengthText?.simpleText || undefined;
+              const thumbs = pvr.thumbnail?.thumbnails || [];
+              const thumbUrl = thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${pvr.videoId}/hqdefault.jpg`;
+              tracks.push({
+                videoId: pvr.videoId,
+                title,
+                channelTitle: channel,
+                duration,
+                thumbnailUrl: thumbUrl.startsWith('//') ? 'https:' + thumbUrl : thumbUrl,
+              });
+            }
+          }
+
+          if (tracks.length >= 5) {
+            radioCache.set(videoId, { timestamp: Date.now(), tracks, source: 'web' });
+            return { reqId, videoId, tracks, source: 'web' };
+          }
+
+          // Step 3: Secondary results (watch next lockupViewModel)
+          const secondary =
+            json?.contents?.twoColumnWatchNextResults?.secondaryResults?.secondaryResults?.results || [];
+          for (const item of secondary) {
+            const lvm = item.lockupViewModel;
+            if (lvm && lvm.contentId && lvm.contentId.length === 11) {
+              const meta = lvm.metadata?.lockupMetadataViewModel;
+              const title = meta?.title?.content || '';
+              const channel =
+                meta?.metadata?.contentMetadataViewModel?.metadataRows?.[0]?.metadataParts?.[0]?.text?.content ||
+                'YouTube';
+              const duration =
+                lvm.contentImage?.thumbnailViewModel?.overlays?.[0]?.thumbnailOverlayTimeStatusViewModel?.text || undefined;
+              const thumb =
+                lvm.contentImage?.thumbnailViewModel?.image?.sources?.[0]?.url ||
+                `https://i.ytimg.com/vi/${lvm.contentId}/hqdefault.jpg`;
+              tracks.push({
+                videoId: lvm.contentId,
+                title,
+                channelTitle: channel,
+                duration,
+                thumbnailUrl: thumb.startsWith('//') ? 'https:' + thumb : thumb,
+              });
+            }
+          }
+
+          if (tracks.length > 0) {
+            radioCache.set(videoId, { timestamp: Date.now(), tracks, source: 'secondary' });
+            return { reqId, videoId, tracks, source: 'secondary' };
+          }
+        }
+      } catch (err) {
+        console.warn('YouTube Web radio fallback failed:', err);
+      }
+
+      return { reqId, videoId, tracks: [], source: 'empty' };
+    });
+
     ipcMain.handle('set-audio-output-device', async (_event, deviceId: string) => {
       const script = `
         (async () => {

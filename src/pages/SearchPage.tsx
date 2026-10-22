@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search as SearchIcon, Play, Plus, FolderPlus, X, AlertCircle, Volume2 } from 'lucide-react';
+import { Search as SearchIcon, Play, Plus, FolderPlus, X, AlertCircle, Volume2, Radio } from 'lucide-react';
 import { SearchResultItem, TrackReference } from '../models/types';
 import { YouTubeSearchService } from '../services/youtubeSearch';
 import { playlistService } from '../services/playlistService';
@@ -7,14 +7,13 @@ import { playerService } from '../services/playerService';
 import { LocalStorageManager } from '../storage/localStore';
 
 interface SearchPageProps {
-  onPlayTrack: (track: TrackReference, sourceList?: TrackReference[]) => void;
+  onPlayTrack?: (track: TrackReference, sourceList?: TrackReference[]) => void;
   onOpenAddToPlaylist: (track: TrackReference) => void;
   initialQuery?: string;
   onNavigateToSettings?: () => void;
 }
 
 export const SearchPage: React.FC<SearchPageProps> = ({
-  onPlayTrack,
   onOpenAddToPlaylist,
   initialQuery = '',
 }) => {
@@ -93,8 +92,6 @@ export const SearchPage: React.FC<SearchPageProps> = ({
     addedAt: Date.now(),
   });
 
-  const searchTrackRefs = results.map(toTrackRef);
-
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-5 select-none font-sans">
       {/* Search Bar (Spotlight Style) */}
@@ -151,7 +148,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({
             return (
               <div
                 key={item.videoId}
-                onClick={() => onPlayTrack(track, searchTrackRefs)}
+                onClick={() => playlistService.playTrackWithRadio(track)}
                 className={`group flex items-center justify-between px-4 py-2.5 hover:bg-white/[0.06] transition-colors cursor-pointer ${
                   isPlaying ? 'bg-white/[0.04]' : ''
                 }`}
@@ -195,6 +192,17 @@ export const SearchPage: React.FC<SearchPageProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      playlistService.playTrackWithRadio(track);
+                    }}
+                    className="px-2 py-1 text-xs font-mono text-zinc-300 hover:text-white rounded-md hover:bg-white/[0.08] border border-white/[0.06] flex items-center gap-1"
+                    title="Start Song Radio"
+                  >
+                    <Radio className="w-3.5 h-3.5 text-[#fc3c44]" />
+                    <span>Radio</span>
+                  </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

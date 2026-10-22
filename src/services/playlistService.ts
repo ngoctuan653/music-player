@@ -1,14 +1,21 @@
-import { Playlist, TrackReference } from '../models/types';
+import { Playlist, TrackReference, QueueSourceInfo } from '../models/types';
 import { LocalStorageManager } from '../storage/localStore';
 import { playerService } from './playerService';
 import { RecommendationEngine } from './recommendationEngine';
 
-type QueueListener = (queue: TrackReference[], currentIndex: number) => void;
+type QueueListener = (
+  queue: TrackReference[],
+  currentIndex: number,
+  queueSource: QueueSourceInfo | null
+) => void;
 type PlaylistsListener = (playlists: Playlist[]) => void;
 
 class PlaylistService {
   private queue: TrackReference[] = [];
   private currentIndex: number = -1;
+  private queueSource: QueueSourceInfo | null = null;
+  private currentRadioRequestId: number = 0;
+  private isRefillingRadio: boolean = false;
   private playlists: Playlist[] = [];
   private queueListeners: Set<QueueListener> = new Set();
   private playlistsListeners: Set<PlaylistsListener> = new Set();
@@ -16,9 +23,10 @@ class PlaylistService {
   constructor() {
     this.playlists = LocalStorageManager.getPlaylists();
     const saved = LocalStorageManager.getSavedQueue();
-    if (saved && saved.queue.length > 0) {
+    if (saved && saved.queue && saved.queue.length > 0) {
       this.queue = saved.queue;
       this.currentIndex = Math.max(0, Math.min(saved.currentIndex, saved.queue.length - 1));
+      this.queueSource = saved.queueSource || null;
     }
 
     // Set callback on player service when a track ends
@@ -37,6 +45,10 @@ class PlaylistService {
     return this.currentIndex;
   }
 
+  public getQueueSource(): QueueSourceInfo | null {
+    return this.queueSource;
+  }
+
   public getCurrentTrack(): TrackReference | null {
     if (this.currentIndex >= 0 && this.currentIndex < this.queue.length) {
       return this.queue[this.currentIndex];
@@ -44,16 +56,85 @@ class PlaylistService {
     return null;
   }
 
+  /**
+   * Starts playback of the selected track and spins up an infinite, continuous Song Radio
+   * populated with 15–20 same-vibe songs.
+   * - Preserves any user-added manual tracks (isManual: true).
+   * - Increments currentRadioRequestId to discard stale race-condition responses.
+   * - Sets queueSource metadata for QueuePage UI.
+   */
+  public async playTrackWithRadio(track: TrackReference): Promise<void> {
+    const seedTrack: TrackReference = { ...track, isRadio: false, isManual: false };
+
+    // Capture upcoming manual queue items if user explicitly queued them
+    const upcomingManualTracks = this.queue.filter(
+      (t, idx) => idx > this.currentIndex && Boolean(t.isManual)
+    );
+
+    // Initial state: seed track playing now, followed by manual tracks
+    this.queue = [seedTrack, ...upcomingManualTracks];
+    this.currentIndex = 0;
+    this.queueSource = {
+      type: 'radio',
+      seedTitle: seedTrack.title,
+      seedVideoId: seedTrack.videoId,
+    };
+
+    this.persistQueue();
+    this.notifyQueue();
+    LocalStorageManager.addToHistory(seedTrack);
+    playerService.playTrack(seedTrack);
+
+    // Monotonic request counter for race-condition prevention
+    const reqId = ++this.currentRadioRequestId;
+
+    if (window.electronAPI?.fetchYouTubeRadio) {
+      try {
+        const res = await window.electronAPI.fetchYouTubeRadio({
+          videoId: seedTrack.videoId,
+          reqId,
+        });
+
+        // Strict race-condition check: discard if user has clicked another track
+        if (
+          res.reqId !== this.currentRadioRequestId ||
+          this.getCurrentTrack()?.videoId !== seedTrack.videoId
+        ) {
+          return;
+        }
+
+        const history = LocalStorageManager.getHistory();
+        const filteredRadio = RecommendationEngine.filterAndScoreRadioCandidates({
+          candidates: res.tracks,
+          seedTrack,
+          currentQueue: this.queue,
+          history,
+          targetCount: 18,
+        });
+
+        if (filteredRadio.length > 0) {
+          this.queue.push(...filteredRadio);
+          this.persistQueue();
+          this.notifyQueue();
+        }
+      } catch (err) {
+        console.warn('Error fetching YouTube Radio in playTrackWithRadio:', err);
+      }
+    }
+  }
+
   public playTrackNow(track: TrackReference, sourceList?: TrackReference[]): void {
-    // Search results are not a playback queue. Only tracks explicitly added
-    // to the queue should be considered by Next.
     void sourceList;
+
+    // When starting fresh or when queue is empty / not currently playing, start Song Radio
+    if (this.queue.length === 0 || this.currentIndex === -1 || !this.getCurrentTrack()) {
+      void this.playTrackWithRadio(track);
+      return;
+    }
+
     const existingIdx = this.queue.findIndex(t => t.videoId === track.videoId);
     if (existingIdx !== -1) {
       this.currentIndex = existingIdx;
-    } else if (this.queue.length === 0) {
-      this.queue = [track];
-      this.currentIndex = 0;
     } else {
       this.queue.splice(this.currentIndex + 1, 0, track);
       this.currentIndex = this.currentIndex + 1;
@@ -63,25 +144,27 @@ class PlaylistService {
     this.notifyQueue();
     LocalStorageManager.addToHistory(track);
     playerService.playTrack(track);
-    void this.ensureUpcomingQueue();
+    void this.checkAndRefillRadioQueue();
   }
 
   public enqueueNext(track: TrackReference): void {
+    const manualTrack: TrackReference = { ...track, isManual: true, isRadio: false };
     if (this.queue.length === 0) {
-      this.playTrackNow(track);
+      void this.playTrackWithRadio(manualTrack);
       return;
     }
-    this.queue.splice(this.currentIndex + 1, 0, track);
+    this.queue.splice(this.currentIndex + 1, 0, manualTrack);
     this.persistQueue();
     this.notifyQueue();
   }
 
   public enqueueEnd(track: TrackReference): void {
+    const manualTrack: TrackReference = { ...track, isManual: true, isRadio: false };
     if (this.queue.length === 0) {
-      this.playTrackNow(track);
+      void this.playTrackWithRadio(manualTrack);
       return;
     }
-    this.queue.push(track);
+    this.queue.push(manualTrack);
     this.persistQueue();
     this.notifyQueue();
   }
@@ -105,11 +188,13 @@ class PlaylistService {
 
     this.persistQueue();
     this.notifyQueue();
+    void this.checkAndRefillRadioQueue();
   }
 
   public clearQueue(): void {
     this.queue = [];
     this.currentIndex = -1;
+    this.queueSource = null;
     this.persistQueue();
     this.notifyQueue();
   }
@@ -122,7 +207,7 @@ class PlaylistService {
       playerService.playTrack(track);
       this.persistQueue();
       this.notifyQueue();
-      void this.ensureUpcomingQueue();
+      void this.checkAndRefillRadioQueue();
     }
   }
 
@@ -156,46 +241,61 @@ class PlaylistService {
             this.notifyQueue();
             LocalStorageManager.addToHistory(related);
             playerService.playTrack(related);
-            void this.ensureUpcomingQueue();
+            void this.checkAndRefillRadioQueue();
           }
         }
       }
     }
   }
 
-  private isFillingQueue: boolean = false;
-
-  private async ensureUpcomingQueue(): Promise<void> {
+  /**
+   * Auto-refill: When remaining radio tracks <= 3, fetch the next batch seamlessly
+   * using the last track as seed. Ensures an infinite, never-ending song stream.
+   */
+  public async checkAndRefillRadioQueue(): Promise<void> {
     const settings = LocalStorageManager.getSettings();
     if (!settings.autoPlayNext) return;
-    if (this.isFillingQueue) return;
+    if (this.isRefillingRadio) return;
 
     const remaining = this.queue.length - 1 - this.currentIndex;
-    if (remaining >= 2) return;
+    if (remaining > 3) return;
 
-    this.isFillingQueue = true;
+    this.isRefillingRadio = true;
     try {
-      const current = this.getCurrentTrack();
-      if (!current) return;
+      const lastTrack = this.queue[this.queue.length - 1] || this.getCurrentTrack();
+      if (!lastTrack) return;
 
-      const history = LocalStorageManager.getHistory();
-      const nextTrack = await RecommendationEngine.getSmartNextTrack({
-        currentTrack: current,
-        currentQueue: this.queue,
-        history,
-      });
+      const reqId = ++this.currentRadioRequestId;
+      if (window.electronAPI?.fetchYouTubeRadio) {
+        const res = await window.electronAPI.fetchYouTubeRadio({
+          videoId: lastTrack.videoId,
+          reqId,
+        });
 
-      if (nextTrack) {
-        if (!this.queue.some(t => t.videoId === nextTrack.videoId)) {
-          this.queue.push(nextTrack);
+        // Verify request is still relevant
+        if (res.reqId !== this.currentRadioRequestId) {
+          return;
+        }
+
+        const history = LocalStorageManager.getHistory();
+        const nextBatch = RecommendationEngine.filterAndScoreRadioCandidates({
+          candidates: res.tracks,
+          seedTrack: lastTrack,
+          currentQueue: this.queue,
+          history,
+          targetCount: 15,
+        });
+
+        if (nextBatch.length > 0) {
+          this.queue.push(...nextBatch);
           this.persistQueue();
           this.notifyQueue();
         }
       }
     } catch (err) {
-      console.warn('Failed to top up upcoming queue:', err);
+      console.warn('Radio auto-refill failed:', err);
     } finally {
-      this.isFillingQueue = false;
+      this.isRefillingRadio = false;
     }
   }
 
@@ -242,20 +342,23 @@ class PlaylistService {
   }
 
   private persistQueue(): void {
-    LocalStorageManager.saveQueue(this.queue, this.currentIndex);
+    LocalStorageManager.saveQueue(this.queue, this.currentIndex, this.queueSource);
   }
 
   public subscribeQueue(listener: QueueListener): () => void {
     this.queueListeners.add(listener);
-    listener(this.queue, this.currentIndex);
+    listener(this.queue, this.currentIndex, this.queueSource);
     return () => {
       this.queueListeners.delete(listener);
     };
   }
 
   private notifyQueue(): void {
-    this.queueListeners.forEach(listener => listener(this.queue, this.currentIndex));
+    this.queueListeners.forEach(listener =>
+      listener(this.queue, this.currentIndex, this.queueSource)
+    );
   }
+
 
   // ---- Playlist Operations ----
 
