@@ -16,7 +16,8 @@ import {
   Moon, 
   Copy, 
   Activity, 
-  ExternalLink 
+  ExternalLink,
+  RotateCw
 } from 'lucide-react';
 import { AppSettings } from '../models/types';
 import { LocalStorageManager } from '../storage/localStore';
@@ -38,6 +39,15 @@ export const SettingsPage: React.FC = () => {
   const [verifyResult, setVerifyResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
 
+  // Restart tracking state
+  const [initialDns, setInitialDns] = useState<{
+    mode: string;
+    url: string;
+    accountKey: string;
+  } | null>(null);
+  const [needsRestart, setNeedsRestart] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
+
   useEffect(() => {
     const current = LocalStorageManager.getSettings();
     setSettings(current);
@@ -46,21 +56,59 @@ export const SettingsPage: React.FC = () => {
     if (window.electronAPI?.getDnsConfig) {
       window.electronAPI.getDnsConfig().then((cfg) => {
         if (cfg) {
-          setDnsMode(cfg.mode || 'ublock');
-          if (cfg.url) {
-            if (cfg.mode === 'ublock') {
-              setUblockUrl(cfg.url);
-            } else {
-              setCustomDnsUrl(cfg.url);
-            }
+          const mode = cfg.mode || 'ublock';
+          let url = cfg.url || '';
+          if (!url && mode === 'ublock') url = 'https://my.ublockdns.com/na56bjem';
+          const key = cfg.accountKey || (mode === 'ublock' ? 'valid glass gravity pipe' : '');
+
+          setDnsMode(mode);
+          if (mode === 'ublock') {
+            setUblockUrl(url);
+          } else {
+            setCustomDnsUrl(url);
           }
-          if (cfg.accountKey) {
-            setUblockKey(cfg.accountKey);
+          if (key) {
+            setUblockKey(key);
           }
+          setInitialDns({ mode, url, accountKey: key });
         }
       }).catch(() => {});
     }
   }, []);
+
+  // Detect whether current DNS settings differ from startup/applied config
+  const currentTargetUrl = dnsMode === 'ublock' ? ublockUrl.trim() : dnsMode === 'custom' ? customDnsUrl.trim() : '';
+  const currentAccountKey = dnsMode === 'ublock' ? ublockKey.trim() : '';
+  const isDnsModified = initialDns !== null && (
+    dnsMode !== initialDns.mode ||
+    currentTargetUrl !== initialDns.url ||
+    currentAccountKey !== initialDns.accountKey
+  );
+  const showRestartPrompt = needsRestart || isDnsModified;
+
+  const handleRestartApp = async () => {
+    setIsRestarting(true);
+    try {
+      // Auto-save pending DNS settings if modified so the user doesn't lose changes
+      if (window.electronAPI?.setDnsConfig) {
+        const targetUrl = dnsMode === 'ublock' ? ublockUrl.trim() : dnsMode === 'custom' ? customDnsUrl.trim() : undefined;
+        await window.electronAPI.setDnsConfig({
+          mode: dnsMode,
+          url: targetUrl,
+          accountKey: dnsMode === 'ublock' ? ublockKey.trim() : undefined,
+        });
+      }
+      await LocalStorageManager.syncToDiskNow();
+    } catch (err) {
+      console.warn('Error saving before restart:', err);
+    }
+
+    if (window.electronAPI?.restartApp) {
+      window.electronAPI.restartApp();
+    } else {
+      window.location.reload();
+    }
+  };
 
   const handleSaveSettings = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -96,6 +144,7 @@ export const SettingsPage: React.FC = () => {
         accountKey: dnsMode === 'ublock' ? ublockKey.trim() : undefined,
       });
       setIsDnsSaved(true);
+      setNeedsRestart(true);
       setTimeout(() => setIsDnsSaved(false), 3000);
     }
   };
@@ -180,6 +229,41 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Restart App Notice Banner (when DNS / DoH options are changed) */}
+      {showRestartPrompt && (
+        <div className="bg-[#fc3c44]/15 border border-[#fc3c44]/40 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg backdrop-blur-md animate-in fade-in duration-200">
+          <div className="flex items-start sm:items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-[#fc3c44]/25 border border-[#fc3c44]/40 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+              <RotateCw className={`w-4 h-4 text-[#fc3c44] ${isRestarting ? 'animate-spin' : ''}`} />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-xs font-semibold text-white">Yêu cầu khởi động lại ứng dụng</h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#fc3c44]/25 text-[#fc3c44] border border-[#fc3c44]/40 font-medium">
+                  RESTART REQUIRED
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-300 mt-0.5 leading-relaxed">
+                {isDnsSaved
+                  ? 'Cấu hình DNS / DoH mới đã được lưu. Cần khởi động lại ứng dụng để Chromium áp dụng vào hệ thống mạng.'
+                  : 'Cài đặt DNS / DoH đã thay đổi. Nhấn nút bên dưới để tự động lưu cấu hình và khởi động lại ứng dụng ngay lập tức.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+            <button
+              type="button"
+              onClick={handleRestartApp}
+              disabled={isRestarting}
+              className="w-full sm:w-auto px-4 py-2 bg-[#fc3c44] hover:bg-[#e0343b] text-white font-medium text-xs rounded-lg flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-50"
+            >
+              <RotateCw className={`w-3.5 h-3.5 ${isRestarting ? 'animate-spin' : ''}`} />
+              <span>{isRestarting ? 'Đang khởi động lại...' : 'Khởi động lại ngay'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Theme Section */}
       <section className="bg-[#1c1c1e] border border-white/[0.08] rounded-xl p-5 space-y-3 shadow-sm">
         <div className="flex items-start justify-between gap-4">
@@ -208,7 +292,7 @@ export const SettingsPage: React.FC = () => {
               <Shield className="w-5 h-5 text-[#fc3c44]" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-sm font-semibold text-zinc-100">
                   Lá chắn DNS-over-HTTPS (DoH) & Chặn quảng cáo
                 </h2>
@@ -216,6 +300,12 @@ export const SettingsPage: React.FC = () => {
                   <Lock className="w-3 h-3" />
                   {dnsMode !== 'off' ? 'DoH ENCRYPTED' : 'DISABLED'}
                 </span>
+                {showRestartPrompt && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#fc3c44]/15 text-[#fc3c44] border border-[#fc3c44]/30 text-[10px] font-mono animate-pulse">
+                    <RotateCw className="w-3 h-3" />
+                    RESTART TO APPLY
+                  </span>
+                )}
               </div>
               <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
                 Định tuyến truy vấn mạng qua DNS mã hóa (DoH) kết hợp bộ lọc Electron nội bộ để triệt tiêu quảng cáo, tracker và telemetry từ ngay trước khi bắt đầu tải trang.
@@ -485,19 +575,37 @@ export const SettingsPage: React.FC = () => {
           </div>
         )}
 
-        {/* Save DNS Button */}
-        <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]">
-          <span className="text-[11px] text-zinc-500 font-mono">
-            {isDnsSaved ? '✓ DNS config saved! Restart app to apply to Chromium network stack.' : 'Note: Chromium applies DoH templates on startup.'}
+        {/* Save DNS & Restart Action Bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-3 border-t border-white/[0.06]">
+          <span className="text-[11px] text-zinc-400 font-mono">
+            {isDnsSaved
+              ? '✓ Đã lưu cấu hình DNS! Khởi động lại ứng dụng để áp dụng vào hệ thống mạng.'
+              : showRestartPrompt
+                ? '⚠ Cài đặt DNS đã thay đổi. Cần khởi động lại ứng dụng để có hiệu lực.'
+                : 'Lưu ý: Chromium áp dụng DoH templates khi khởi động ứng dụng.'}
           </span>
-          <button
-            type="button"
-            onClick={handleSaveDns}
-            className="px-4 py-2 bg-[#fc3c44] hover:bg-[#e0343b] text-white font-medium text-xs rounded-lg flex items-center gap-1.5 transition-colors shadow-sm"
-          >
-            {isDnsSaved ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
-            <span>{isDnsSaved ? 'Saved' : 'Save DNS Settings'}</span>
-          </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+            {showRestartPrompt && (
+              <button
+                type="button"
+                onClick={handleRestartApp}
+                disabled={isRestarting}
+                className="px-3.5 py-2 bg-[#fc3c44] hover:bg-[#e0343b] text-white font-medium text-xs rounded-lg flex items-center gap-1.5 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                title="Khởi động lại ứng dụng để áp dụng cấu hình DNS mới ngay lập tức"
+              >
+                <RotateCw className={`w-3.5 h-3.5 ${isRestarting ? 'animate-spin' : ''}`} />
+                <span>{isRestarting ? 'Đang restart...' : 'Khởi động lại ngay'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleSaveDns}
+              className="px-4 py-2 bg-white/[0.08] hover:bg-white/[0.14] text-white font-medium text-xs rounded-lg flex items-center gap-1.5 transition-colors border border-white/[0.1] shadow-sm"
+            >
+              {isDnsSaved ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Save className="w-3.5 h-3.5" />}
+              <span>{isDnsSaved ? 'Đã lưu' : 'Lưu cấu hình DNS'}</span>
+            </button>
+          </div>
         </div>
       </section>
 

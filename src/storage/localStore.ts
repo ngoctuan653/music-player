@@ -54,15 +54,60 @@ const DEFAULT_PLAYLISTS: Playlist[] = [
   }
 ];
 
+export function sanitizeTrack(track: any): TrackReference {
+  if (!track || typeof track !== 'object') {
+    return {
+      videoId: '',
+      title: 'Unknown Title',
+      channelTitle: 'Unknown Artist',
+      thumbnailUrl: '',
+      addedAt: Date.now(),
+    };
+  }
+
+  let thumb = String(track.thumbnailUrl || '');
+  if (thumb.length > 200) {
+    thumb = track.videoId ? `https://i.ytimg.com/vi/${track.videoId}/mqdefault.jpg` : thumb.slice(0, 200);
+  }
+
+  return {
+    videoId: String(track.videoId || '').slice(0, 32),
+    title: String(track.title || 'Unknown').slice(0, 120),
+    channelTitle: String(track.channelTitle || 'Unknown Artist').slice(0, 80),
+    thumbnailUrl: thumb,
+    duration: track.duration ? String(track.duration).slice(0, 16) : undefined,
+    addedAt: typeof track.addedAt === 'number' ? track.addedAt : Date.now(),
+  };
+}
+
 export class LocalStorageManager {
+  private static syncDebounceTimer: any = null;
+
+  public static syncToDiskNow(): Promise<void> {
+    return this.syncToDisk();
+  }
+
+  private static scheduleSyncToDisk(): void {
+    if (this.syncDebounceTimer) {
+      clearTimeout(this.syncDebounceTimer);
+    }
+    this.syncDebounceTimer = setTimeout(() => {
+      void this.syncToDisk();
+    }, 600);
+  }
+
   private static async syncToDisk(): Promise<void> {
     if (window.electronAPI?.saveDiskStorage) {
       try {
-        const dump: Record<string, string> = {};
+        const dump: Record<string, any> = {};
         for (const key of Object.values(STORAGE_KEYS)) {
           const val = localStorage.getItem(key);
-          if (val !== null) {
-            dump[key] = val;
+          if (val !== null && val !== undefined) {
+            try {
+              dump[key] = JSON.parse(val);
+            } catch {
+              dump[key] = val;
+            }
           }
         }
         await window.electronAPI.saveDiskStorage(dump);
@@ -114,7 +159,7 @@ export class LocalStorageManager {
   static saveSettings(settings: AppSettings): void {
     try {
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-      void this.syncToDisk();
+      this.scheduleSyncToDisk();
     } catch (e) {
       console.error('Failed to save settings to localStorage', e);
     }
@@ -138,8 +183,15 @@ export class LocalStorageManager {
 
   static savePlaylists(playlists: Playlist[]): void {
     try {
-      localStorage.setItem(STORAGE_KEYS.PLAYLISTS, JSON.stringify(playlists));
-      void this.syncToDisk();
+      // Keep storage bounded: max 25 playlists, max 80 tracks per playlist, all sanitized
+      const boundedPlaylists = playlists.slice(0, 25).map(pl => ({
+        ...pl,
+        name: String(pl.name || '').slice(0, 80),
+        description: String(pl.description || '').slice(0, 160),
+        tracks: (pl.tracks || []).slice(0, 80).map(sanitizeTrack),
+      }));
+      localStorage.setItem(STORAGE_KEYS.PLAYLISTS, JSON.stringify(boundedPlaylists));
+      this.scheduleSyncToDisk();
     } catch (e) {
       console.error('Failed to save playlists to localStorage', e);
     }
@@ -177,17 +229,21 @@ export class LocalStorageManager {
 
   static addToHistory(track: TrackReference): void {
     try {
+      const cleanTrack = sanitizeTrack(track);
+      if (!cleanTrack.videoId) return;
+
       let history = this.getHistory();
       // Remove track if it already exists to move it to the front
-      history = history.filter(item => item.videoId !== track.videoId);
-      history.unshift({ ...track, addedAt: Date.now() });
-      // Keep up to 60 tracks
-      if (history.length > 60) {
-        history = history.slice(0, 60);
+      history = history.filter(item => item.videoId !== cleanTrack.videoId);
+      history.unshift({ ...cleanTrack, addedAt: Date.now() });
+      // Keep strictly up to 50 tracks to protect disk capacity
+      if (history.length > 50) {
+        history = history.slice(0, 50);
       }
+      history = history.map(sanitizeTrack);
       localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
       this.notifyHistory();
-      void this.syncToDisk();
+      this.scheduleSyncToDisk();
     } catch (e) {
       console.error('Failed to save history', e);
     }
@@ -196,7 +252,7 @@ export class LocalStorageManager {
   static clearHistory(): void {
     localStorage.removeItem(STORAGE_KEYS.HISTORY);
     this.notifyHistory();
-    void this.syncToDisk();
+    this.scheduleSyncToDisk();
   }
 
   static getSavedQueue(): { queue: TrackReference[]; currentIndex: number; queueSource?: any } | null {
@@ -210,8 +266,28 @@ export class LocalStorageManager {
 
   static saveQueue(queue: TrackReference[], currentIndex: number, queueSource?: any): void {
     try {
-      localStorage.setItem(STORAGE_KEYS.QUEUE, JSON.stringify({ queue, currentIndex, queueSource }));
-      void this.syncToDisk();
+      // Cap persisted queue to max 30 tracks centered around currentIndex to maintain minimal disk footprint
+      const MAX_PERSISTED_QUEUE = 30;
+      let boundedQueue = queue;
+      let adjustedIndex = currentIndex;
+
+      if (queue.length > MAX_PERSISTED_QUEUE) {
+        const windowStart = Math.max(0, Math.min(currentIndex - 5, queue.length - MAX_PERSISTED_QUEUE));
+        boundedQueue = queue.slice(windowStart, windowStart + MAX_PERSISTED_QUEUE);
+        adjustedIndex = Math.max(0, currentIndex - windowStart);
+      }
+
+      const cleanQueue = boundedQueue.map(sanitizeTrack);
+      const cleanSource = queueSource && typeof queueSource === 'object'
+        ? { type: queueSource.type, name: String(queueSource.name || '').slice(0, 60) }
+        : undefined;
+
+      localStorage.setItem(STORAGE_KEYS.QUEUE, JSON.stringify({
+        queue: cleanQueue,
+        currentIndex: adjustedIndex,
+        queueSource: cleanSource,
+      }));
+      this.scheduleSyncToDisk();
     } catch (e) {
       console.error('Failed to save queue', e);
     }

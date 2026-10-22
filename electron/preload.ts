@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setDnsConfig: (config: any) => ipcRenderer.invoke('set-dns-config', config),
   getDiskStorage: () => ipcRenderer.invoke('get-disk-storage'),
   saveDiskStorage: (data: any) => ipcRenderer.invoke('save-disk-storage', data),
+  restartApp: () => ipcRenderer.send('app-restart'),
   onMediaControl: (callback: (action: string) => void) => {
     const handler = (_event: any, action: string) => callback(action);
     ipcRenderer.on('media-control', handler);

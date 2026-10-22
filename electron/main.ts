@@ -507,12 +507,24 @@ if (!gotTheLock) {
 
     ipcMain.handle('save-disk-storage', async (_event, data: any) => {
       try {
-        fs.writeFileSync(userStorageFilePath, JSON.stringify(data, null, 2), 'utf8');
+        const jsonStr = JSON.stringify(data);
+        // Strict safety guard: ensure storage file never exceeds 128KB to protect disk
+        if (jsonStr.length > 128 * 1024) {
+          console.warn('Storage payload unusually large, skipping oversize write');
+          return false;
+        }
+        fs.writeFileSync(userStorageFilePath, jsonStr, 'utf8');
         return true;
       } catch (e) {
         console.warn('Failed to write user-storage.json:', e);
         return false;
       }
+    });
+
+    // Clean app relaunch handler
+    ipcMain.on('app-restart', () => {
+      app.relaunch();
+      app.exit(0);
     });
 
     // Native fetch IPC handler (bypasses CORS/CSP safely from node main process)

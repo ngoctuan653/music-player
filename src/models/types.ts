@@ -98,6 +98,7 @@ declare global {
       setDnsConfig?: (config: { mode: 'ublock' | 'controld' | 'hagezi' | 'nextdns' | 'cloudflare' | 'adguard' | 'family' | 'custom' | 'off'; url?: string; accountKey?: string }) => Promise<{ success: boolean; error?: string }>;
       getDiskStorage?: () => Promise<any>;
       saveDiskStorage?: (data: any) => Promise<boolean>;
+      restartApp?: () => void;
     };
   }
 }
