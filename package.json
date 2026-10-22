@@ -1,6 +1,8 @@
 {
   "name": "youtube-music-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "description": "Sleek Apple Music styled desktop player for YouTube Music with ad bypass and high-fidelity streaming",
+  "author": "Tuan Ngoc <aduhacknao2004@gmail.com>",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
@@ -15,11 +17,14 @@
     "appId": "com.ngoctuan653.musicplayer",
     "productName": "Music Player",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "public/**/*",
+      "build/**/*",
       "package.json"
     ],
     "win": {
@@ -37,14 +42,17 @@
           ]
         }
       ],
-      "icon": "public/icon.png"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Music Player"
+      "shortcutName": "Music Player",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     }
   },
   "dependencies": {

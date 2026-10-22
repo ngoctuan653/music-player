@@ -250,6 +250,40 @@ function setupNetworkInterceptors() {
   });
 }
 
+function getAppIconPath(): string {
+  const candidates = [
+    path.join(__dirname, '../build/icon.ico'),
+    path.join(__dirname, '../public/icon.ico'),
+    path.join(__dirname, '../dist/icon.png'),
+    path.join(__dirname, '../public/icon.png'),
+    path.join(process.resourcesPath || '', 'build/icon.ico'),
+    path.join(process.resourcesPath || '', 'public/icon.ico'),
+    path.join(process.resourcesPath || '', 'dist/icon.png'),
+    path.join(process.resourcesPath || '', 'public/icon.png'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return path.join(__dirname, '../public/icon.png');
+}
+
+function getAppPngIconPath(): string {
+  const candidates = [
+    path.join(__dirname, '../dist/icon.png'),
+    path.join(__dirname, '../public/icon.png'),
+    path.join(process.resourcesPath || '', 'dist/icon.png'),
+    path.join(process.resourcesPath || '', 'public/icon.png'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return path.join(__dirname, '../public/icon.png');
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1080,
@@ -265,7 +299,7 @@ async function createWindow() {
       webSecurity: true, // Clean secure standard
       webviewTag: true,  // Enables native YouTube Webview streaming engine
     },
-    icon: path.join(__dirname, '../public/icon.png'),
+    icon: getAppIconPath(),
     show: false,
   });
 
@@ -338,8 +372,11 @@ async function createWindow() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, '../public/icon.png');
+  const iconPath = getAppIconPath();
   let icon = nativeImage.createFromPath(iconPath);
+  if (icon.isEmpty()) {
+    icon = nativeImage.createFromPath(getAppPngIconPath());
+  }
   if (icon.isEmpty()) {
     icon = nativeImage.createEmpty();
   } else {
