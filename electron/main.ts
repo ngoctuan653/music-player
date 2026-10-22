@@ -13,6 +13,9 @@ const isDev = process.env.NODE_ENV !== 'production' || !app.isPackaged;
 // Allow media autoplay without requiring manual click inside the iframe
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
 // --- High-Performance DoH (DNS-over-HTTPS) & Ad-Shield Setup ---
 export interface DnsConfig {
@@ -140,12 +143,6 @@ const adBlockPatterns = [
   '*://securepubads.g.doubleclick.net/*',
   '*://pubads.g.doubleclick.net/*',
   '*://tpc.googlesyndication.com/*',
-  // YouTube in-stream and tracking ad endpoints
-  '*://*.youtube.com/pagead/*',
-  '*://*.youtube.com/api/stats/ads*',
-  '*://*.youtube.com/youtubei/v1/player/ad_break*',
-  '*://*.youtube.com/get_midroll_info*',
-  '*://*.youtube.com/ptracking*',
   // Third-party Video Ad Servers & Telemetry (HaGeZi Multi PRO streaming list)
   '*://*.innovid.com/*',
   '*://*.flashtalking.com/*',
@@ -231,7 +228,7 @@ function setupNetworkInterceptors() {
 
   // Also attach to all guest sessions created for <webview> tags and log console messages
   app.on('web-contents-created', (_event, contents) => {
-    contents.setMaxListeners(50);
+    contents.setMaxListeners(100);
     attachAdBlocker(contents.session);
     if (contents.getType() === 'webview') {
       contents.on('console-message', (_e, level, msg) => {

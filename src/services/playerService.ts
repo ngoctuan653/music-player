@@ -11,7 +11,7 @@ class PlayerService {
   public onTrackEndedCallback: (() => void) | null = null;
   private isEndedHandled: boolean = false;
   private trackStartTime: number = 0;
-  private isFallbackTried: boolean = false;
+  private userWantsPlaying: boolean = false;
 
   private status: PlayerStatus = {
     currentTrack: null,
@@ -31,16 +31,22 @@ class PlayerService {
     if (this.webview === wv) return;
 
     if (this.webview && this.webviewLoadListener) {
-      this.webview.removeEventListener('did-finish-load', this.webviewLoadListener);
+      try {
+        this.webview.removeEventListener('dom-ready', this.webviewLoadListener);
+        this.webview.removeEventListener('did-finish-load', this.webviewLoadListener);
+      } catch {}
     }
 
     this.webview = wv;
 
-    // When webview finishes loading a video page
     this.webviewLoadListener = () => {
       this.onWebviewLoaded();
     };
-    this.webview.addEventListener('did-finish-load', this.webviewLoadListener);
+
+    try {
+      this.webview.addEventListener('dom-ready', this.webviewLoadListener);
+      this.webview.addEventListener('did-finish-load', this.webviewLoadListener);
+    } catch {}
 
     this.startPollingTimer();
   }
@@ -108,28 +114,29 @@ class PlayerService {
             const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
             const v = document.querySelector('video');
 
-            // 1. Detect active in-stream ad
+            // 1. Strictly detect ACTIVE in-stream ad
             const isAd = Boolean(
               p?.classList.contains('ad-showing') ||
               p?.classList.contains('ad-interrupting') ||
-              document.querySelector('.ad-showing, .ad-interrupting, .ytp-ad-player-overlay') ||
               (p && typeof p.getAdState === 'function' && p.getAdState() === 1)
             );
 
             if (isAd && v) {
-              // Mute instantly
               v.muted = true;
-              // Jump directly to end of ad segment
-              if (!isNaN(v.duration) && v.duration > 0) {
-                v.currentTime = v.duration + 0.5;
-              } else {
-                v.currentTime = 99999;
+              v.playbackRate = 16;
+              if (!isNaN(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.2) {
+                v.currentTime = v.duration;
+              }
+            } else if (v && !isAd) {
+              if (v.playbackRate !== 1) v.playbackRate = 1;
+              if (v.muted && !${this.status.isMuted}) {
+                v.muted = false;
               }
             }
 
             // 2. Click any skip button immediately
             const skipBtns = document.querySelectorAll(
-              '.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button-text, button.ytp-ad-skip-button-text, .ytp-ad-overlay-close-button, button[class*="skip-button"], button[id*="skip"], .ytp-ad-text.ytp-ad-preview-text'
+              '.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button-text, button.ytp-ad-skip-button-text, .ytp-ad-overlay-close-button'
             );
             skipBtns.forEach(b => { try { b.click(); } catch(e) {} });
 
@@ -137,14 +144,14 @@ class PlayerService {
               try { p.skipAd(); } catch (e) {}
             }
 
-            // 3. Auto-confirm viewer discretion / age warning / interstitial (Kendrick Lamar fix)
+            // 3. Auto-confirm viewer discretion / age warning prompts (Kendrick Lamar Not Like Us)
             const confirmBtns = document.querySelectorAll(
-              '#confirm-button, ytd-button-renderer#confirm-button button, button[aria-label*="understand" i], button[aria-label*="proceed" i], button[aria-label*="continue" i], #dismiss-button, .yt-spec-button-shape-next--filled, ytd-consent-bump-v2-lightbox button, tp-yt-paper-dialog button#dismiss-button'
+              '#confirm-button, ytd-button-renderer#confirm-button button, button[aria-label*="understand" i], button[aria-label*="proceed" i], button[aria-label*="continue" i], yt-playability-error-supported-renderers button, ytd-enforcement-message-view-model button'
             );
             confirmBtns.forEach(b => { try { b.click(); } catch(e) {} });
 
-            // 4. Auto-resume main video if paused after prompt
-            if (v && v.paused && !isAd) {
+            // 4. Auto-resume main video if paused after consent prompt
+            if (v && v.paused && !isAd && ${this.userWantsPlaying}) {
               v.play().catch(() => {});
               if (p && typeof p.playVideo === 'function') {
                 p.playVideo();
@@ -180,7 +187,13 @@ class PlayerService {
             if (typeof v.setSinkId === 'function' && '${activeSink}' !== 'default') {
               v.setSinkId('${activeSink}').catch(() => {});
             }
-            v.play().catch(() => {});
+            if (${this.userWantsPlaying}) {
+              v.play().catch(() => {});
+              const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+              if (p && typeof p.playVideo === 'function') {
+                try { p.playVideo(); } catch (e) {}
+              }
+            }
           }
         } catch (e) {}
       })();
@@ -207,42 +220,61 @@ class PlayerService {
               ? p.getVideoData().video_id
               : null;
 
-            // Check if ad is active
+            // Check if in-stream ad is strictly active
             const adActive = Boolean(
-              (p && typeof p.getAdState === 'function' && p.getAdState() === 1) ||
               p?.classList.contains('ad-showing') ||
               p?.classList.contains('ad-interrupting') ||
-              document.querySelector('.ad-showing, .ad-interrupting, .ytp-ad-player-overlay')
+              (p && typeof p.getAdState === 'function' && p.getAdState() === 1)
             );
 
             if (adActive) {
               v.muted = true;
-              if (!isNaN(v.duration) && v.duration > 0) {
-                v.currentTime = v.duration + 0.5;
-              } else {
-                v.currentTime = 99999;
+              v.playbackRate = 16;
+              if (!isNaN(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.2) {
+                v.currentTime = v.duration;
               }
               const skipBtns = document.querySelectorAll(
-                '.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-ad-skip-button-text, .ytp-ad-overlay-close-button, button[class*="skip-button"], button[id*="skip"]'
+                '.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-ad-skip-button-text'
               );
               skipBtns.forEach(b => { try { b.click(); } catch(e) {} });
               if (p && typeof p.skipAd === 'function') {
                 try { p.skipAd(); } catch(e) {}
               }
-            } else if (v && v.playbackRate !== 1) {
-              v.playbackRate = 1;
-              v.muted = ${this.status.isMuted};
+            } else if (v) {
+              if (v.playbackRate !== 1) v.playbackRate = 1;
+              if (v.muted && !${this.status.isMuted}) {
+                v.muted = false;
+              }
+              const targetVol = ${this.status.volume / 100};
+              if (Math.abs(v.volume - targetVol) > 0.05) {
+                v.volume = targetVol;
+              }
+
+              // Active playback enforcement based on user intent
+              if (${this.userWantsPlaying} && v.paused && !v.ended) {
+                v.play().catch(() => {});
+                if (p && typeof p.playVideo === 'function') {
+                  p.playVideo();
+                }
+              } else if (!${this.userWantsPlaying} && !v.paused) {
+                v.pause();
+                if (p && typeof p.pauseVideo === 'function') {
+                  p.pauseVideo();
+                }
+              }
             }
 
-            // Click interstitial warnings / confirm buttons
+            // Click interstitial warnings / confirm buttons (e.g. Kendrick Lamar content warning)
             const confirmBtns = document.querySelectorAll(
-              '#confirm-button, ytd-button-renderer#confirm-button button, button[aria-label*="understand" i], button[aria-label*="proceed" i], button[aria-label*="continue" i], #dismiss-button, .yt-spec-button-shape-next--filled'
+              '#confirm-button, ytd-button-renderer#confirm-button button, button[aria-label*="understand" i], button[aria-label*="proceed" i], button[aria-label*="continue" i], yt-playability-error-supported-renderers button, ytd-enforcement-message-view-model button'
             );
             confirmBtns.forEach(b => { try { b.click(); } catch(e) {} });
 
-            // Check if video has hard error screen
+            // Check if there is a fatal playback error
+            const errEl = document.querySelector('ytd-player-error-message-renderer:not([hidden]), #error-screen:not([hidden])');
             const hasError = Boolean(
-              document.querySelector('#error-screen, ytd-player-error-message-renderer')
+              v.error ||
+              (errEl && errEl.offsetParent !== null && errEl.innerText && errEl.innerText.trim().length > 15 && (!v.currentTime || v.currentTime === 0))
             );
 
             return {
@@ -265,15 +297,6 @@ class PlayerService {
       try {
         const data = await this.webview.executeJavaScript(queryScript);
         if (data) {
-          // If video encountered a hard error screen on youtube.com/watch, fallback to embed
-          if (data.hasError && !this.isFallbackTried && this.status.currentTrack) {
-            this.isFallbackTried = true;
-            console.warn('Watch page restricted, switching to embed fallback for', this.status.currentTrack.videoId);
-            const embedUrl = `https://www.youtube.com/embed/${encodeURIComponent(this.status.currentTrack.videoId)}?autoplay=1&enablejsapi=1`;
-            void this.webview.loadURL(embedUrl).catch(() => {});
-            return;
-          }
-
           if (data.adActive) {
             this.status = {
               ...this.status,
@@ -284,31 +307,52 @@ class PlayerService {
             return;
           }
 
-          const matchesTrack = !data.videoId || data.videoId === this.status.currentTrack.videoId;
-          if (matchesTrack) {
-            const isPlaying = !data.paused && !data.ended;
-            const isBuffering = isPlaying && data.readyState < 3;
-
+          if (data.hasError && data.currentTime === 0) {
             this.status = {
               ...this.status,
-              currentTime: data.currentTime,
-              duration: data.duration > 0 ? data.duration : this.status.duration,
-              isPlaying,
-              isBuffering,
-              error: null,
+              isPlaying: false,
+              isBuffering: false,
+              error: 'Không thể phát track này do giới hạn bản quyền của YouTube.',
             };
             this.notify();
+            return;
+          }
 
-            // Track ended check
-            const timeSinceTrackStart = Date.now() - this.trackStartTime;
-            if (timeSinceTrackStart > 3500) {
-              const isNearEnd = data.readyState >= 2 &&
-                ((data.ended && data.currentTime > 3) ||
-                  (data.duration > 10 && data.currentTime >= data.duration - 0.6));
-              if (isNearEnd && !this.isEndedHandled) {
-                this.isEndedHandled = true;
-                this.handleTrackEnded();
-              }
+          // Video ID mismatch check after 4s (if player failed to switch)
+          const timeSinceTrackStart = Date.now() - this.trackStartTime;
+          if (
+            data.videoId &&
+            this.status.currentTrack &&
+            data.videoId !== this.status.currentTrack.videoId &&
+            timeSinceTrackStart > 4000
+          ) {
+            const targetUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(this.status.currentTrack.videoId)}&vq=small`;
+            void this.webview.loadURL(targetUrl).catch(() => {});
+            return;
+          }
+
+          const isVideoPlaying = !data.paused && !data.ended;
+          const isBuffering = this.userWantsPlaying && (!isVideoPlaying || data.readyState < 3);
+
+          this.status = {
+            ...this.status,
+            currentTime: data.currentTime,
+            duration: data.duration > 0 ? data.duration : this.status.duration,
+            isPlaying: this.userWantsPlaying,
+            isBuffering,
+            error: null,
+          };
+          this.notify();
+
+          // Natural track ended check
+          if (timeSinceTrackStart > 3500) {
+            const isNearEnd =
+              data.duration > 15 &&
+              (data.currentTime >= data.duration - 0.8 || (data.ended && data.currentTime >= data.duration - 2.5));
+
+            if (isNearEnd && !this.isEndedHandled) {
+              this.isEndedHandled = true;
+              this.handleTrackEnded();
             }
           }
         }
@@ -330,7 +374,7 @@ class PlayerService {
 
   public async playTrack(track: TrackReference): Promise<void> {
     this.isEndedHandled = false;
-    this.isFallbackTried = false;
+    this.userWantsPlaying = true;
     this.trackStartTime = Date.now();
     this.status = {
       ...this.status,
@@ -338,7 +382,7 @@ class PlayerService {
       error: null,
       currentTime: 0,
       duration: 0,
-      isBuffering: false,
+      isBuffering: true,
       isPlaying: true,
     };
     this.notify();
@@ -357,10 +401,16 @@ class PlayerService {
           (() => {
             try {
               const p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+              const v = document.querySelector('video');
               if (p && typeof p.loadVideoById === 'function') {
                 p.loadVideoById('${track.videoId}');
+                if (v) {
+                  v.muted = ${this.status.isMuted};
+                  v.volume = ${this.status.volume / 100};
+                }
                 p.playVideo?.();
-                // Click confirm button if present immediately
+                v?.play()?.catch(() => {});
+                // Auto-confirm warning if present immediately
                 setTimeout(() => {
                   document.querySelectorAll('#confirm-button, ytd-button-renderer#confirm-button button, button[aria-label*="proceed" i]').forEach(b => {
                     try { b.click(); } catch(e) {}
@@ -391,7 +441,7 @@ class PlayerService {
               ...this.status,
               isPlaying: false,
               isBuffering: false,
-              error: 'Unable to stream this YouTube track.',
+              error: 'Không thể phát track này từ YouTube.',
             };
             this.notify();
           }
@@ -403,23 +453,35 @@ class PlayerService {
   }
 
   public play(): void {
+    this.userWantsPlaying = true;
+    this.status.isPlaying = true;
+    this.notify();
+
     if (this.webview) {
-      this.webview.executeJavaScript('document.querySelector("video")?.play()').catch(() => {});
-      this.status.isPlaying = true;
-      this.notify();
+      this.webview
+        .executeJavaScript(
+          'document.querySelector("video")?.play(); const p = document.getElementById("movie_player"); if (p && typeof p.playVideo === "function") p.playVideo();'
+        )
+        .catch(() => {});
     }
   }
 
   public pause(): void {
+    this.userWantsPlaying = false;
+    this.status.isPlaying = false;
+    this.notify();
+
     if (this.webview) {
-      this.webview.executeJavaScript('document.querySelector("video")?.pause()').catch(() => {});
-      this.status.isPlaying = false;
-      this.notify();
+      this.webview
+        .executeJavaScript(
+          'document.querySelector("video")?.pause(); const p = document.getElementById("movie_player"); if (p && typeof p.pauseVideo === "function") p.pauseVideo();'
+        )
+        .catch(() => {});
     }
   }
 
   public togglePlayPause(): void {
-    if (this.status.isPlaying) {
+    if (this.userWantsPlaying) {
       this.pause();
     } else {
       this.play();

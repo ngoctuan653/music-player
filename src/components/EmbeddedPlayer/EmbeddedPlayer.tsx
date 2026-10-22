@@ -37,7 +37,7 @@ export const EmbeddedPlayer: React.FC<EmbeddedPlayerProps> = ({ isOpen, onClose 
       className={`fixed transition-all duration-200 ease-out overflow-hidden flex flex-col bg-[#1c1c1e] border border-white/[0.08] shadow-2xl rounded-xl ${
         isOpen
           ? 'bottom-20 right-4 w-96 h-60 opacity-100 pointer-events-auto z-[60]'
-          : 'bottom-0 right-0 w-60 h-36 opacity-[0.001] pointer-events-none -z-10'
+          : 'fixed -left-[9999px] top-0 w-80 h-48 opacity-100 pointer-events-none -z-50'
       }`}
     >
       {/* Header when open */}
