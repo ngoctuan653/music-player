@@ -9,6 +9,7 @@ import { PlayerBar } from './components/PlayerBar/PlayerBar';
 import { EmbeddedPlayer } from './components/EmbeddedPlayer/EmbeddedPlayer';
 import { AddToPlaylistModal } from './components/PlaylistModal/AddToPlaylistModal';
 import { CommentsDrawer } from './components/CommentsDrawer/CommentsDrawer';
+import { FocusModeVinylView } from './components/FocusMode/FocusModeVinylView';
 import { HomePage } from './pages/HomePage';
 import { SearchPage } from './pages/SearchPage';
 import { QueuePage } from './pages/QueuePage';
@@ -21,6 +22,7 @@ export const App: React.FC = () => {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [isMiniVideoOpen, setIsMiniVideoOpen] = useState(false);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [isFocusModeOpen, setIsFocusModeOpen] = useState(false);
   const [modalTrack, setModalTrack] = useState<TrackReference | null>(null);
   const [currentTrack, setCurrentTrack] = useState<TrackReference | null>(null);
   const [searchInitialQuery, setSearchInitialQuery] = useState('');
@@ -163,7 +165,16 @@ export const App: React.FC = () => {
         onOpenQueue={() => setActivePage('queue')}
         onToggleComments={() => setIsCommentsOpen(!isCommentsOpen)}
         isCommentsOpen={isCommentsOpen}
+        onOpenFocusMode={() => setIsFocusModeOpen(true)}
       />
+
+      {/* Vinyl Focus Mode Fullscreen Modal */}
+      {isFocusModeOpen && currentTrack && (
+        <FocusModeVinylView
+          isOpen={isFocusModeOpen}
+          onClose={() => setIsFocusModeOpen(false)}
+        />
+      )}
     </div>
   );
 };

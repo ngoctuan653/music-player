@@ -783,24 +783,24 @@ export class YouTubeSearchService {
       case 'billboard_vietnam':
       case 'vpop':
       case 'vpop_fresh':
-        liveQuery = 'nhac tre vpop top hits official music video';
+        liveQuery = 'vpop official music video 2024';
         regionCode = 'VN';
         break;
       case 'billboard_global':
-        liveQuery = 'billboard global 200 top singles official';
+        liveQuery = 'global viral hits official music video';
         break;
       case 'kpop_hits':
-        liveQuery = 'kpop top trending official music video';
+        liveQuery = 'kpop official mv';
         regionCode = 'KR';
         break;
       case 'global_viral':
-        liveQuery = 'global viral hits official music video';
+        liveQuery = 'viral songs official music video';
         break;
       case 'billboard_hot100':
       case 'trending':
       case 'tophits':
       default:
-        liveQuery = 'billboard hot 100 official music video single';
+        liveQuery = 'official music video hits popular';
         break;
     }
 
@@ -814,7 +814,25 @@ export class YouTubeSearchService {
       }
 
       const liveResults = await this.searchDirect(liveQuery);
-      const validLive = liveResults.filter(item => isIndividualSong(item));
+      let validLive = liveResults.filter(item => isIndividualSong(item));
+
+      // If primary query had too few singles, enrich with a secondary live query
+      if (validLive.length < 6) {
+        const fallbackQuery = category.includes('vpop') || category.includes('vietnam')
+          ? 'nhac tre moi nhat official mv'
+          : category.includes('kpop')
+          ? 'kpop new official mv'
+          : 'top hit songs official music video';
+        const secondary = await this.searchDirect(fallbackQuery);
+        const existingIds = new Set(validLive.map(t => t.videoId));
+        for (const item of secondary) {
+          if (isIndividualSong(item) && !existingIds.has(item.videoId)) {
+            existingIds.add(item.videoId);
+            validLive.push(item);
+          }
+        }
+      }
+
       this.exploreCache.set(category, validLive);
       return validLive;
     } catch (error) {

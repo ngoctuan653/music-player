@@ -187,3 +187,46 @@ body {
 .no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* Vinyl Record Turntable Animations & Realistic Textures */
+@keyframes spin-vinyl {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-vinyl-spin {
+  animation: spin-vinyl 18s linear infinite;
+}
+
+.animate-vinyl-spin-paused {
+  animation-play-state: paused !important;
+}
+
+.vinyl-grooves {
+  background: 
+    radial-gradient(circle at center, transparent 36%, rgba(0, 0, 0, 0.5) 36.5%, transparent 37%),
+    repeating-radial-gradient(circle at center, #0f0f11 0px, #1a1a1e 1px, #0d0d0f 2px, #1e1e24 3px);
+}
+
+.vinyl-sheen {
+  background: conic-gradient(
+    from 40deg at 50% 50%,
+    transparent 0deg,
+    rgba(255, 255, 255, 0.09) 25deg,
+    transparent 55deg,
+    transparent 180deg,
+    rgba(255, 255, 255, 0.09) 205deg,
+    transparent 235deg,
+    transparent 360deg
+  );
+}
+
+.tonearm-pivot {
+  transform-origin: 32px 32px;
+  transition: transform 0.75s cubic-bezier(0.34, 1.25, 0.64, 1);
+}
+

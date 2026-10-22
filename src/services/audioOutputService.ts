@@ -1,5 +1,18 @@
 const SINK_STORAGE_KEY = 'ytm_preferred_audio_sink';
 
+const isInputOrMic = (label: string): boolean => {
+  const l = (label || '').toLowerCase();
+  return (
+    l.includes('mic') ||
+    l.includes('micro') ||
+    l.includes('input') ||
+    l.includes('line in') ||
+    l.includes('stereo mix') ||
+    l.includes('bộ trộn') ||
+    l.includes('thu âm')
+  );
+};
+
 export type AudioDeviceListener = (devices: MediaDeviceInfo[], activeDeviceId: string) => void;
 
 class AudioOutputService {
@@ -32,9 +45,9 @@ class AudioOutputService {
     }
 
     try {
-      // First try enumerating devices
+      // First try enumerating devices - strictly keep only audiooutput (speakers/headphones), never microphones
       let allDevices = await navigator.mediaDevices.enumerateDevices();
-      let outputs = allDevices.filter(d => d.kind === 'audiooutput');
+      let outputs = allDevices.filter(d => d.kind === 'audiooutput' && !isInputOrMic(d.label));
 
       // If device labels are empty (happens before initial media permission in Chromium)
       if (outputs.length > 0 && !outputs.some(d => d.label)) {
@@ -43,7 +56,7 @@ class AudioOutputService {
           // Stop tracks immediately after getting labels permission
           stream.getTracks().forEach(t => t.stop());
           allDevices = await navigator.mediaDevices.enumerateDevices();
-          outputs = allDevices.filter(d => d.kind === 'audiooutput');
+          outputs = allDevices.filter(d => d.kind === 'audiooutput' && !isInputOrMic(d.label));
         } catch {
           // If mic permission rejected, continue with available device IDs
         }

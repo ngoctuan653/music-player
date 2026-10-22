@@ -16,6 +16,7 @@ import {
   MessageSquare,
   AlertTriangle,
   ExternalLink,
+  Disc,
 } from 'lucide-react';
 import { PlayerStatus, RepeatMode } from '../../models/types';
 import { playerService } from '../../services/playerService';
@@ -28,6 +29,7 @@ interface PlayerBarProps {
   onOpenQueue: () => void;
   onToggleComments: () => void;
   isCommentsOpen: boolean;
+  onOpenFocusMode?: () => void;
 }
 
 function formatTime(seconds: number): string {
@@ -43,6 +45,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onOpenQueue,
   onToggleComments,
   isCommentsOpen,
+  onOpenFocusMode,
 }) => {
   const [status, setStatus] = useState<PlayerStatus>(playerService.getStatus());
   const [isFavorite, setIsFavorite] = useState<boolean>(false);
@@ -126,19 +129,30 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       <div className="flex items-center gap-3 w-[30%] min-w-0 max-w-[280px] shrink-0">
         {currentTrack ? (
           <>
-            <div className="w-11 h-11 rounded-md bg-[#2c2c2e] overflow-hidden shrink-0 relative border border-white/[0.06] shadow-sm">
+            <div 
+              onClick={onOpenFocusMode}
+              className="w-11 h-11 rounded-md bg-[#2c2c2e] overflow-hidden shrink-0 relative border border-white/[0.06] shadow-sm cursor-pointer group hover:ring-2 hover:ring-[#fc3c44]/60 transition-all"
+              title="Mở chế độ Focus Đĩa Than (Vinyl Mode)"
+            >
               <img
                 src={currentTrack.thumbnailUrl}
                 alt=""
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
               />
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[1px]">
+                <Disc className="w-5 h-5 text-white animate-spin" style={{ animationDuration: '4s' }} />
+              </div>
               {status.isBuffering && (
                 <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#fc3c44] animate-ping" />
               )}
             </div>
 
             <div className="overflow-hidden min-w-0 flex-1 pr-1">
-              <p className="text-xs font-semibold text-white truncate hover:underline cursor-pointer" title={currentTrack.title}>
+              <p 
+                onClick={onOpenFocusMode}
+                className="text-xs font-semibold text-white truncate hover:text-[#fc3c44] hover:underline cursor-pointer transition-colors" 
+                title={`${currentTrack.title} (Click to open Vinyl Focus Mode)`}
+              >
                 {currentTrack.title}
               </p>
               <p className="text-[11px] text-zinc-400 truncate mt-0.5" title={currentTrack.channelTitle}>
