@@ -55,7 +55,40 @@ const DEFAULT_PLAYLISTS: Playlist[] = [
 ];
 
 export class LocalStorageManager {
-  static init(): void {
+  private static async syncToDisk(): Promise<void> {
+    if (window.electronAPI?.saveDiskStorage) {
+      try {
+        const dump: Record<string, string> = {};
+        for (const key of Object.values(STORAGE_KEYS)) {
+          const val = localStorage.getItem(key);
+          if (val !== null) {
+            dump[key] = val;
+          }
+        }
+        await window.electronAPI.saveDiskStorage(dump);
+      } catch (e) {
+        console.warn('Failed to sync storage to disk:', e);
+      }
+    }
+  }
+
+  static async init(): Promise<void> {
+    // 1. Restore from disk if available and localStorage is empty
+    if (window.electronAPI?.getDiskStorage) {
+      try {
+        const diskData = await window.electronAPI.getDiskStorage();
+        if (diskData && typeof diskData === 'object') {
+          for (const [key, val] of Object.entries(diskData)) {
+            if (!localStorage.getItem(key) && val !== null && val !== undefined) {
+              localStorage.setItem(key, typeof val === 'string' ? val : JSON.stringify(val));
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to restore from disk storage:', e);
+      }
+    }
+
     const currentVersion = localStorage.getItem(STORAGE_KEYS.VERSION);
     if (!currentVersion) {
       localStorage.setItem(STORAGE_KEYS.VERSION, SCHEMA_VERSION);
@@ -66,6 +99,7 @@ export class LocalStorageManager {
         this.saveSettings(DEFAULT_SETTINGS);
       }
     }
+    void this.syncToDisk();
   }
 
   static getSettings(): AppSettings {
@@ -80,6 +114,7 @@ export class LocalStorageManager {
   static saveSettings(settings: AppSettings): void {
     try {
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+      void this.syncToDisk();
     } catch (e) {
       console.error('Failed to save settings to localStorage', e);
     }
@@ -104,6 +139,7 @@ export class LocalStorageManager {
   static savePlaylists(playlists: Playlist[]): void {
     try {
       localStorage.setItem(STORAGE_KEYS.PLAYLISTS, JSON.stringify(playlists));
+      void this.syncToDisk();
     } catch (e) {
       console.error('Failed to save playlists to localStorage', e);
     }
@@ -151,6 +187,7 @@ export class LocalStorageManager {
       }
       localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
       this.notifyHistory();
+      void this.syncToDisk();
     } catch (e) {
       console.error('Failed to save history', e);
     }
@@ -159,6 +196,7 @@ export class LocalStorageManager {
   static clearHistory(): void {
     localStorage.removeItem(STORAGE_KEYS.HISTORY);
     this.notifyHistory();
+    void this.syncToDisk();
   }
 
   static getSavedQueue(): { queue: TrackReference[]; currentIndex: number; queueSource?: any } | null {
@@ -173,9 +211,9 @@ export class LocalStorageManager {
   static saveQueue(queue: TrackReference[], currentIndex: number, queueSource?: any): void {
     try {
       localStorage.setItem(STORAGE_KEYS.QUEUE, JSON.stringify({ queue, currentIndex, queueSource }));
+      void this.syncToDisk();
     } catch (e) {
       console.error('Failed to save queue', e);
     }
   }
 }
-

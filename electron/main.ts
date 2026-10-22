@@ -114,12 +114,23 @@ function createStaticServer(): Promise<string> {
       });
     });
 
-    staticServer.listen(0, '127.0.0.1', () => {
-      const port = (staticServer?.address() as any)?.port;
-      resolve(`http://127.0.0.1:${port}`);
+    const FIXED_PORT = 39281;
+    staticServer.listen(FIXED_PORT, '127.0.0.1', () => {
+      resolve(`http://127.0.0.1:${FIXED_PORT}`);
     });
 
-    staticServer.on('error', reject);
+    staticServer.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        // Fallback to dynamic port if 39281 is occupied, but prefer 39281
+        const fallbackServer = http.createServer(staticServer!.listeners('request')[0] as any);
+        fallbackServer.listen(0, '127.0.0.1', () => {
+          const port = (fallbackServer.address() as any)?.port;
+          resolve(`http://127.0.0.1:${port}`);
+        });
+      } else {
+        reject(err);
+      }
+    });
   });
 }
 
@@ -477,6 +488,30 @@ if (!gotTheLock) {
         return { success: true };
       } catch (err: any) {
         return { success: false, error: err.message };
+      }
+    });
+
+    const userStorageFilePath = path.join(app.getPath('userData'), 'user-storage.json');
+
+    ipcMain.handle('get-disk-storage', async () => {
+      try {
+        if (fs.existsSync(userStorageFilePath)) {
+          const raw = fs.readFileSync(userStorageFilePath, 'utf8');
+          return JSON.parse(raw);
+        }
+      } catch (e) {
+        console.warn('Failed to read user-storage.json:', e);
+      }
+      return null;
+    });
+
+    ipcMain.handle('save-disk-storage', async (_event, data: any) => {
+      try {
+        fs.writeFileSync(userStorageFilePath, JSON.stringify(data, null, 2), 'utf8');
+        return true;
+      } catch (e) {
+        console.warn('Failed to write user-storage.json:', e);
+        return false;
       }
     });
 

@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fetchYouTubeRadio: (params: { videoId: string; reqId: number }) => ipcRenderer.invoke('fetch-youtube-radio', params),
   getDnsConfig: () => ipcRenderer.invoke('get-dns-config'),
   setDnsConfig: (config: any) => ipcRenderer.invoke('set-dns-config', config),
+  getDiskStorage: () => ipcRenderer.invoke('get-disk-storage'),
+  saveDiskStorage: (data: any) => ipcRenderer.invoke('save-disk-storage', data),
   onMediaControl: (callback: (action: string) => void) => {
     const handler = (_event: any, action: string) => callback(action);
     ipcRenderer.on('media-control', handler);

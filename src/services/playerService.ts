@@ -344,11 +344,11 @@ class PlayerService {
           };
           this.notify();
 
-          // Natural track ended check
-          if (timeSinceTrackStart > 3500) {
+          // Natural track ended check (MUST only fire on full songs, never on ad segments)
+          if (timeSinceTrackStart > 3500 && !data.adActive && data.duration > 45 && data.currentTime > 30) {
             const isNearEnd =
-              data.duration > 15 &&
-              (data.currentTime >= data.duration - 0.8 || (data.ended && data.currentTime >= data.duration - 2.5));
+              data.currentTime >= data.duration - 1.2 ||
+              (data.ended && data.currentTime >= data.duration - 3);
 
             if (isNearEnd && !this.isEndedHandled) {
               this.isEndedHandled = true;
