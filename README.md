@@ -1,37 +1,37 @@
 # YouTube Music Desktop (Windows 11)
 
-Ứng dụng desktop Windows 11 gọn nhẹ dành riêng cho việc nghe nhạc từ YouTube trong một cửa sổ riêng, hỗ trợ chạy nền khay hệ thống (System Tray), phím tắt Media và quản lý danh sách bài hát / playlist cục bộ.
+A lightweight Windows 11 desktop application dedicated to listening to music from YouTube in a separate window. It supports running in the system tray, media hotkeys, local queues and playlists, and a focused audio-listening experience.
 
 ---
 
-## 🌟 Tính năng chính
+## 🌟 Key Features
 
-- **Giao diện tập trung vào nghe nhạc (Audio-focused UI):**
-  - Tích hợp YouTube Embedded IFrame Player API chính thức của Google.
-  - Sử dụng đúng **1 player instance duy nhất** trong suốt vòng đời ứng dụng (không reload player khi chuyển trang).
-  - Tùy chọn mở cửa sổ thu nhỏ xem video (Mini Video View / Picture-in-Picture) hoặc ẩn vào nền để tập trung nghe nhạc.
-- **Tìm kiếm thông minh & Hỗ trợ dán Link trực tiếp:**
-  - Hỗ trợ dán trực tiếp mọi dạng link YouTube (`youtube.com/watch?v=...`, `youtu.be/...`, `shorts/...`) hoặc video ID 11 ký tự để nghe tức thì.
-  - Tự động lấy metadata (tiêu đề, tác giả, thumbnail) qua oEmbed mà **không bắt buộc phải có API Key**.
-  - Tích hợp **YouTube Data API v3** (với ô cấu hình API Key trong Cài đặt và cơ chế Debounce 400ms).
-  - Cung cấp sẵn các danh sách nhạc thư giãn / Lofi / Hit tuyển chọn khi chưa cấu hình key.
-- **Quản lý Hàng đợi (Queue) & Playlist cục bộ:**
-  - Thêm bài hát vào hàng đợi: Phát ngay, Phát kế tiếp (Enqueue Next), Thêm vào cuối (Enqueue End).
-  - Tự động chuyển bài tiếp theo khi hết bài; hỗ trợ chế độ Lặp lại (`off`, `all`, `one`) và Xáo trộn ngẫu nhiên (`shuffle`).
-  - Tạo, đổi tên, xóa các playlist cá nhân và danh sách "Bài hát yêu thích" (Favorites).
-  - Lưu trữ an toàn trong `localStorage` với schema versioning (`v1.0.0`).
-- **Lịch sử nghe (Recently Played):**
-  - Ghi nhận tới 60 bài hát gần nhất, dễ dàng nghe lại hoặc đưa vào playlist bất kỳ.
-- **Tích hợp sâu với Windows 11:**
-  - Khung cửa sổ Frameless hiện đại với nút Thu nhỏ, Phóng to, Đóng.
-  - Khay hệ thống (**System Tray**): Click đúp hoặc menu chuột phải để hiện/ẩn hoặc điều khiển Play/Pause/Next/Prev; tùy chọn "Thoát hoàn toàn".
-  - Phím tắt Media toàn cục (**Windows Global Media Keys**): `MediaPlayPause`, `MediaNextTrack`, `MediaPreviousTrack`.
-- **Tuân thủ chính sách YouTube API & Google:**
-  - Không tải / trích xuất trái phép luồng audio (audio ripping), không bypass DRM hay can thiệp chặn quảng cáo.
+- **Audio-focused UI:**
+  - Integrates the official Google YouTube Embedded IFrame Player API.
+  - Uses exactly **one player instance** throughout the application's lifecycle (the player is not reloaded when navigating between pages).
+  - Supports opening a compact video window (Mini Video View / Picture-in-Picture) or hiding the window in the background for focused listening.
+- **Smart search and direct link support:**
+  - Supports directly pasting any YouTube link (`youtube.com/watch?v=...`, `youtu.be/...`, `shorts/...`) or an 11-character video ID for instant playback.
+  - Automatically retrieves metadata (title, author, and thumbnail) through oEmbed without requiring an API key.
+  - Integrates the **YouTube Data API v3**, with an API key configuration field in Settings and 400 ms debouncing.
+  - Provides curated Relaxing / Lofi / Hits playlists when no API key is configured.
+- **Queue and local playlist management:**
+  - Add songs to the queue using Play Now, Enqueue Next, or Enqueue End.
+  - Automatically plays the next song when the current one ends; supports Repeat modes (`off`, `all`, `one`) and random Shuffle.
+  - Create, rename, and delete personal playlists, as well as a Favorites list.
+  - Stores data safely in `localStorage` with schema versioning (`v1.0.0`).
+- **Recently Played history:**
+  - Keeps up to 60 recently played songs, making it easy to replay them or add them to any playlist.
+- **Deep Windows 11 integration:**
+  - Modern frameless window with Minimize, Maximize, and Close buttons.
+  - **System Tray:** Double-click or use the context menu to show/hide the app or control Play/Pause/Next/Previous; includes a "Quit completely" option.
+  - Global media shortcuts (**Windows Global Media Keys**): `MediaPlayPause`, `MediaNextTrack`, and `MediaPreviousTrack`.
+- **YouTube API and Google policy compliance:**
+  - Does not illegally download or extract audio streams (audio ripping), bypass DRM, or interfere with ad blocking.
 
 ---
 
-## 🛠️ Công nghệ sử dụng
+## 🛠️ Technology Stack
 
 - **Desktop Shell:** Electron 34
 - **Frontend Framework:** React 18 + TypeScript + Vite 6
@@ -41,83 +41,90 @@
 
 ---
 
-## 🚀 Hướng dẫn cài đặt & Chạy ứng dụng
+## 🚀 Installation and Usage
 
-### 1. Yêu cầu môi trường
-- Hệ điều hành: Windows 10 / 11
-- Node.js: >= v18 (khuyến nghị v20 trở lên)
+### 1. Prerequisites
+
+- Operating system: Windows 10 / 11
+- Node.js: >= v18 (v20 or later recommended)
 - npm: >= v9
 
-### 2. Cài đặt thư viện
+### 2. Install dependencies
+
 ```bash
 npm install
 ```
 
-### 3. Chạy môi trường phát triển (Dev Mode)
-Chạy ứng dụng với Vite Hot Reload:
+### 3. Run in development mode
+
+Run the application with Vite Hot Reload:
+
 ```bash
 npm run dev
 ```
 
-### 4. Build và Chạy bản Production
+### 4. Build and run the production version
+
 ```bash
 npm run build
 npm start
 ```
 
-### 5. Chạy Unit Tests
+### 5. Run unit tests
+
 ```bash
 npm test
 ```
 
 ---
 
-## ⚙️ Cấu hình YouTube Data API v3 (Tùy chọn)
+## ⚙️ Configure the YouTube Data API v3 (Optional)
 
-Ứng dụng có thể hoạt động hoàn toàn độc lập thông qua việc dán link YouTube trực tiếp hoặc dùng danh sách tuyển chọn. Nếu muốn kích hoạt tìm kiếm mọi video từ khóa trong ô Search:
-1. Truy cập [Google Cloud Console](https://console.cloud.google.com).
-2. Tạo dự án mới và bật dịch vụ **YouTube Data API v3**.
-3. Tạo **API Key** (Google cấp miễn phí 10.000 quota units / ngày).
-4. Mở ứng dụng, vào trang **Cài đặt (Settings)** &rarr; dán API Key vào và nhấn **Lưu cài đặt** (hoặc đặt biến `VITE_YOUTUBE_API_KEY` trong file `.env`).
+The application can work completely independently by pasting YouTube links directly or using the curated playlists. To enable full search functionality:
+
+1. Visit the [Google Cloud Console](https://console.cloud.google.com).
+2. Create a new project and enable the **YouTube Data API v3** service.
+3. Create an **API key** (Google provides 10,000 quota units per day for free).
+4. Open the application, go to **Settings**, paste in the API key, and click **Save Settings**. Alternatively, set `VITE_YOUTUBE_API_KEY` in a `.env` file.
 
 ---
 
-## 📂 Cấu trúc thư mục
+## 📂 Project Structure
 
 ```text
 music-player/
 ├── electron/
-│   ├── main.ts              # Quản lý BrowserWindow, Tray, IPC, Global Media Shortcuts
-│   └── preload.ts           # Context bridge an toàn giữa Electron và Web
+│   ├── main.ts              # Manages BrowserWindow, Tray, IPC, and global media shortcuts
+│   └── preload.ts           # Secure context bridge between Electron and the web application
 ├── src/
 │   ├── components/
-│   │   ├── TitleBar/        # Thanh tiêu đề frameless kéo thả và nút điều khiển
-│   │   ├── Sidebar/         # Menu điều hướng trang và danh sách playlist
-│   │   ├── PlayerBar/       # Thanh điều khiển phát nhạc, timeline, âm lượng
-│   │   ├── EmbeddedPlayer/  # YouTube IFrame Player singleton instance
-│   │   └── PlaylistModal/   # Modal thêm bài hát vào playlist
+│   │   ├── TitleBar/        # Draggable frameless title bar and window controls
+│   │   ├── Sidebar/         # Page navigation menu and playlist list
+│   │   ├── PlayerBar/       # Playback controls, timeline, and volume
+│   │   ├── EmbeddedPlayer/  # Singleton YouTube IFrame Player instance
+│   │   └── PlaylistModal/   # Modal for adding songs to playlists
 │   ├── pages/
-│   │   ├── HomePage.tsx     # Trang chủ, dán link nhanh, nhạc nổi bật
-│   │   ├── SearchPage.tsx   # Tìm kiếm, debounce, thông báo API quota
-│   │   ├── QueuePage.tsx    # Xem và quản lý hàng đợi đang phát
-│   │   ├── PlaylistsPage.tsx# Quản lý danh sách phát, phát tất cả
-│   │   ├── HistoryPage.tsx  # Lịch sử bài hát đã nghe gần đây
-│   │   └── SettingsPage.tsx # Cài đặt API key, hành vi tray, chính sách
+│   │   ├── HomePage.tsx     # Home page, quick link input, and featured music
+│   │   ├── SearchPage.tsx   # Search, debouncing, and API quota notifications
+│   │   ├── QueuePage.tsx    # View and manage the current playback queue
+│   │   ├── PlaylistsPage.tsx# Manage playlists and play all songs
+│   │   ├── HistoryPage.tsx  # Recently played songs
+│   │   └── SettingsPage.tsx # API key, tray behavior, and policy settings
 │   ├── services/
-│   │   ├── playerService.ts # Điều phối trạng thái YouTube IFrame Player API
-│   │   ├── playlistService.ts # Quản lý Queue, Playlists, Auto-play
-│   │   └── youtubeSearch.ts # Phân tích link, oEmbed, gọi Data API v3
+│   │   ├── playerService.ts # Coordinates YouTube IFrame Player API state
+│   │   ├── playlistService.ts # Manages queues, playlists, and autoplay
+│   │   └── youtubeSearch.ts # Parses links, handles oEmbed, and calls Data API v3
 │   ├── storage/
-│   │   └── localStore.ts    # Lưu trữ cục bộ an toàn có versioning
+│   │   └── localStore.ts    # Versioned, secure local storage
 │   ├── models/
-│   │   └── types.ts         # TypeScript models và interfaces
-│   ├── App.tsx              # Component gốc và kết nối IPC
-│   ├── index.css            # Tailwind directives và style thanh cuộn
-│   └── main.tsx             # Entrypoint React DOM
+│   │   └── types.ts         # TypeScript models and interfaces
+│   ├── App.tsx              # Root component and IPC integration
+│   ├── index.css            # Tailwind directives and scrollbar styles
+│   └── main.tsx             # React DOM entry point
 ├── tests/
-│   └── app.test.mjs         # Unit test tự động cho Link parser, Queue và Playlist
+│   └── app.test.mjs         # Automated unit tests for the link parser, queue, and playlists
 ├── public/
-│   └── icon.png             # Logo ứng dụng và icon System Tray
+│   └── icon.png             # Application logo and system tray icon
 ├── package.json
 ├── tailwind.config.js
 ├── tsconfig.json
